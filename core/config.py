@@ -20,11 +20,6 @@ def create_config(args):
         cfg = ConfigDict()
 
     # Set default values if not specified in the loaded config file and assert that required arguments were specified.
-    if args.outdir is not None:
-        cfg.outdir = args.outdir
-    elif not hasattr(cfg, "outdir"):
-        cfg.outdir = "output"
-
     if args.checkpoint is not None:
         cfg.checkpoint = args.checkpoint
     elif not hasattr(cfg, "checkpoint"):
