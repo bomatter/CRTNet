@@ -4,7 +4,6 @@ import yaml
 
 import torch, torchvision
 import torch.nn as nn
-
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -35,7 +34,105 @@ parser.add_argument("--batch_size", type=int, help="Batchsize to use for trainin
 parser.add_argument("--print_batch_metrics", type=bool, default=False, help="Set True to print metrics for every batch.")
 args = parser.parse_args()
 
+# Create output directory
+pathlib.Path(args.outdir).mkdir(exist_ok=True)
 
-# load config or create a new one
+# Load config or create a new one and save it to outdir for reproducibility
 cfg = create_config(args)
 save_config(cfg, args.outdir)
+print(cfg)
+
+# TODO: set image_size
+
+dataset = COCODataset(args.annotations, args.imagedir, image_size)
+dataloader = DataLoader(dataset, batch_size=cfg.batch_size, num_workers=4, shuffle=True, pin_memory=True, drop_last=True)
+
+NUM_CLASSES = dataset.NUM_CLASSES
+print("Number of categories: {}".format(NUM_CLASSES))
+
+model = Model(NUM_CLASSES) # TODO: implement model initialization
+optimizer = torch.optim.Adam(model.parameters()) # TODO: check if this is ok or if model parameters should be passed only after they have been initialized from checkpoint
+criterion = nn.CrossEntropyLoss() # TODO: implement custom loss for uncertainty gating
+
+# Send to device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+# Initialize from checkpoint
+if cfg.checkpoint is not None:
+    print("Initializing from checkpoint {}".format(cfg.checkpoint))
+    checkpoint = torch.load(cfg.checkpoint)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    start_epoch = checkpoint['epoch'] + 1
+else:
+    print("No checkpoint was passed.")
+    # TODO: weight initialization
+    start_epoch = 1
+
+
+writer = SummaryWriter(log_dir=args.outdir)
+accuracy_logger = AccuracyLogger(dataset.idx2label)
+
+
+## Training
+#
+
+for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs", leave=True):
+
+    model.train() # set train mode
+    accuracy_logger.reset() # reset accuracy logger
+
+    for i, (context_images, target_images, labels) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
+#    Debugging
+#    dl = iter(dataloader)
+#    for i in range(20):
+#        context_images, target_images, labels = next(dl)
+        context_images = context_images.to(device)
+        target_images = target_images.to(device)
+
+        optimizer.zero_grad()
+
+        output = model(context_images, target_images) # output is (batchsize, num_classes) tensor of logits
+        loss = criterion(output, labels)
+        loss.backward()
+
+        optimizer.step()
+
+        # log metrics
+        _, predictions = torch.max(output.detach().to("cpu"), 1) # choose idx with maximum score as prediction
+        batch_accuracy = sum(predictions == labels) / cfg.batch_size
+        accuracy_logger.update(predictions, labels)
+        batch_loss = loss.item()
+
+        writer.add_scalar("Batch Loss/train", batch_loss, i + (epoch - 1) * len(dataloader))
+        writer.add_scalar("Batch Accuracy/train", batch_accuracy, i + (epoch - 1) * len(dataloader))
+
+        if args.print_batch_metrics:
+            print("\t Epoch {}, Batch {}: \t Loss: {} \t Accuracy: {}".format(epoch, i, batch_loss, batch_accuracy))
+
+
+    # log metrics
+    writer.add_scalar("Total Accuracy/train", accuracy_logger.accuracy(), epoch * len(dataloader))
+    print("\nEpoch {}, Train Accuracy: {}".format(epoch, accuracy_logger.accuracy()))
+
+    print("{0:20} {1:10}".format("Class", "Accuracy")) # header
+    for name, acc in accuracy_logger.named_class_accuarcies().items():
+        writer.add_scalar("Class Accuracies/train/{}".format(name), acc, epoch * len(dataloader))
+        print("{0:20} {1:10.4f}".format(name, acc))
+
+    # save checkpoint
+    torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}, args.outdir + "/checkpoint_{}.tar".format(epoch))
+    print("Checkpoint saved.")
+
+    # save training accuracies
+    accuracy_logger.save(args.outdir, name="train_accuracies_epoch_{}".format(epoch))
+    
+    # evaluation on test data
+    if cfg.test_annotations is not None and cfg.test_imagedir is not None and epoch % args.test_frequency == 0:
+        print("Starting evaluation on test data.")
+        test_accuracy = test(model, cfg.test_annotations, cfg.test_imagedir, image_size, args.outdir, epoch=epoch)
+
+        writer.add_scalar("Total Accuracy/test", test_accuracy.accuracy(), epoch * len(dataloader))
+        for name, acc in test_accuracy.named_class_accuarcies().items():
+            writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
