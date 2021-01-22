@@ -1,5 +1,6 @@
 import os
 import yaml
+import subprocess
 
 from ml_collections import ConfigDict
 
@@ -47,6 +48,13 @@ def create_config(args):
         cfg.batch_size = args.batch_size
     elif not hasattr(cfg, "batch_size"):
         cfg.batch_size = 32
+
+    # add hash of last git commit to config if available
+    try:
+        cfg.git = subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()
+        print(cfg.git)
+    except:
+        print("Could not save git state to config.")
 
     return cfg
     
