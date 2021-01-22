@@ -31,7 +31,7 @@ parser.add_argument("--test_frequency", type=int, default=1, help="Evaluate mode
 
 parser.add_argument("--epochs", type=int, default=1, help="Number of epochs to train.")
 parser.add_argument("--batch_size", type=int, help="Batchsize to use for training.")
-parser.add_argument("--print_batch_metrics", type=bool, default=False, help="Set True to print metrics for every batch.")
+parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
 args = parser.parse_args()
 
 # Create output directory
@@ -70,7 +70,6 @@ else:
     # TODO: weight initialization
     start_epoch = 1
 
-
 writer = SummaryWriter(log_dir=args.outdir)
 accuracy_logger = AccuracyLogger(dataset.idx2label)
 
@@ -84,16 +83,18 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     accuracy_logger.reset() # reset accuracy logger
 
     for i, (context_images, target_images, labels) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
+
 #    Debugging
 #    dl = iter(dataloader)
 #    for i in range(20):
 #        context_images, target_images, labels = next(dl)
+
         context_images = context_images.to(device)
         target_images = target_images.to(device)
 
         optimizer.zero_grad()
 
-        output = model(context_images, target_images) # output is (batchsize, num_classes) tensor of logits
+        output = model(context_images, target_images)
         loss = criterion(output, labels)
         loss.backward()
 
