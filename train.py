@@ -12,6 +12,7 @@ from tqdm import tqdm
 from test import test
 from core.config import create_config, save_config
 from core.dataset import COCODataset
+from core.model import Model
 from core.metrics import AccuracyLogger
 
 
@@ -42,15 +43,15 @@ cfg = create_config(args)
 save_config(cfg, args.outdir)
 print(cfg)
 
-# TODO: set image_size
-
-dataset = COCODataset(args.annotations, args.imagedir, image_size)
+dataset = COCODataset(args.annotations, args.imagedir, image_size = (224,224))
 dataloader = DataLoader(dataset, batch_size=cfg.batch_size, num_workers=4, shuffle=True, pin_memory=True, drop_last=True)
 
 NUM_CLASSES = dataset.NUM_CLASSES
 print("Number of categories: {}".format(NUM_CLASSES))
 
-model = Model(NUM_CLASSES) # TODO: implement model initialization
+model = Model(NUM_CLASSES)
+assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
+
 optimizer = torch.optim.Adam(model.parameters()) # TODO: check if this is ok or if model parameters should be passed only after they have been initialized from checkpoint
 criterion = nn.CrossEntropyLoss() # TODO: implement custom loss for uncertainty gating
 
@@ -80,7 +81,7 @@ accuracy_logger = AccuracyLogger(dataset.idx2label)
 for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs", leave=True):
 
     model.train() # set train mode
-    accuracy_logger.reset() # reset accuracy logger
+    accuracy_logger.reset() # reset accuracy logger every epoch
 
     for i, (context_images, target_images, labels) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
 
@@ -132,7 +133,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     # evaluation on test data
     if cfg.test_annotations is not None and cfg.test_imagedir is not None and epoch % args.test_frequency == 0:
         print("Starting evaluation on test data.")
-        test_accuracy = test(model, cfg.test_annotations, cfg.test_imagedir, image_size, args.outdir, epoch=epoch)
+        test_accuracy = test(model, cfg.test_annotations, cfg.test_imagedir, image_size=dataset.image_size, output_dir=args.outdir, epoch=epoch)
 
         writer.add_scalar("Total Accuracy/test", test_accuracy.accuracy(), epoch * len(dataloader))
         for name, acc in test_accuracy.named_class_accuarcies().items():
