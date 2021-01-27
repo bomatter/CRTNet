@@ -43,7 +43,8 @@ def test(model, annotations_file, image_dir, image_size, output_dir, epoch=None,
             labels = labels.to(device)
 
             output = model(context_images, target_images) # output is (batchsize, num_classes) tensor of logits
-            test_accuracy.update(output, labels)
+            _, predictions = torch.max(output.detach().to("cpu"), 1) # choose idx with maximum score as prediction
+            test_accuracy.update(predictions, labels)
 
             if record_individual_scores:
                 individual_scores.update(output.to("cpu"), labels.to("cpu"), annotation_ids)
@@ -83,7 +84,6 @@ if __name__ == "__main__":
     parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
     parser.add_argument("--num_classes", type=int, default=33, help="Number of classes.")
     parser.add_argument("--image_size", type=tuple, default=(224, 224), help="Input image size the model requires.")
-    parser.add_argument("--batch_size", type=int, help="Batchsize to use for training.")
     parser.add_argument('--record_individual_scores', action='store_true', default=False, help="If set, will log for each individual annotion how it was predicted and if the prediction was correct")
     parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
     args = parser.parse_args()

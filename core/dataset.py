@@ -36,7 +36,7 @@ class COCODataset(Dataset):
         self.annotations = self.coco_dict["annotations"]
         
         self.id2file = {}
-        for i in self.coco_dict[annotations"images"]:
+        for i in self.coco_dict["images"]:
             self.id2file[i["id"]] = os.path.join(image_dir, i["file_name"])
 
         self.id2label = {} # maps label id to label name

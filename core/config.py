@@ -52,7 +52,6 @@ def create_config(args):
     # add hash of last git commit to config if available
     try:
         cfg.git = subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()
-        print(cfg.git)
     except:
         print("Could not save git state to config.")
 
@@ -68,5 +67,5 @@ def save_config(cfg, savedir):
         savedir: Path to folder where the config file should be saved.
     """
 
-    with open(os.path.join(savedir, "config.cfg")) as f:
+    with open(os.path.join(savedir, "config.cfg"), "w") as f:
         yaml.dump(cfg.to_yaml(), f)
