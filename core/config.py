@@ -47,7 +47,7 @@ def create_config(args):
     if args.batch_size is not None:
         cfg.batch_size = args.batch_size
     elif not hasattr(cfg, "batch_size"):
-        cfg.batch_size = 32
+        cfg.batch_size = 16
 
     # add hash of last git commit to config if available
     try:
