@@ -142,3 +142,5 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         writer.add_scalar("Total Accuracy/test", test_accuracy.accuracy(), epoch * len(dataloader))
         for name, acc in test_accuracy.named_class_accuarcies().items():
             writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
+
+writer.close()
