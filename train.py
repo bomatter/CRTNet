@@ -91,10 +91,10 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     model.train() # set train mode
     accuracy_logger.reset() # reset accuracy logger every epoch
 
-    for i, (context_images, target_images, labels) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
+    for i, (context_images, target_images, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
         context_images = context_images.to(device)
         target_images = target_images.to(device)
-        labels = labels.to(device)
+        labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
         optimizer.zero_grad()
 
@@ -106,8 +106,8 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
 
         # log metrics
         _, predictions = torch.max(output.detach().to("cpu"), 1) # choose idx with maximum score as prediction
-        batch_accuracy = sum(predictions == labels) / cfg.batch_size
-        accuracy_logger.update(predictions, labels)
+        batch_accuracy = sum(predictions == labels_cpu) / cfg.batch_size
+        accuracy_logger.update(predictions, labels_cpu)
         batch_loss = loss.item()
 
         writer.add_scalar("Batch Loss/train", batch_loss, i + (epoch - 1) * len(dataloader))
