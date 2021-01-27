@@ -34,6 +34,7 @@ parser.add_argument("--test_frequency", type=int, default=1, help="Evaluate mode
 
 parser.add_argument("--epochs", type=int, default=1, help="Number of epochs to train.")
 parser.add_argument("--batch_size", type=int, help="Batchsize to use for training.")
+parser.add_argument("--learning_rate", type=float, help="Learning rate to use for training.")
 parser.add_argument("--save_frequency", type=int, default=1, help="Save model checkpoint every __ epochs.")
 parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
 args = parser.parse_args()
@@ -55,7 +56,7 @@ print("Number of categories: {}".format(NUM_CLASSES))
 model = Model(NUM_CLASSES)
 assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
 
-optimizer = torch.optim.Adam(model.parameters()) # TODO: check if this is ok or if model parameters should be passed only after they have been initialized from checkpoint
+optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate) # TODO: check if this is ok or if model parameters should be passed only after they have been initialized from checkpoint
 criterion = nn.CrossEntropyLoss() # TODO: implement custom loss for uncertainty gating
 
 # Send to device
@@ -79,7 +80,6 @@ context_images, target_images, labels = iter(dataloader).next()
 writer.add_images("context_image_batch", context_images) # add example context image batch to tensorboard log
 writer.add_images("target_image_batch", target_images) # add example target image batch to tensorboard log
 writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device)]) # add model graph to tensorboard log
-
 accuracy_logger = AccuracyLogger(dataset.idx2label)
 
 
@@ -143,4 +143,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         for name, acc in test_accuracy.named_class_accuarcies().items():
             writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
 
+        writer.add_hparams({"learning_rate": cfg.learning_rate}, metric_dict={"hparam/accuracy", test_accuracy.accuracy()})
+        
 writer.close()
