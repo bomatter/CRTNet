@@ -143,6 +143,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         for name, acc in test_accuracy.named_class_accuarcies().items():
             writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
 
-        writer.add_hparams({"learning_rate": cfg.learning_rate}, metric_dict={"hparam/accuracy", test_accuracy.accuracy()})
+        writer.add_hparams({"learning_rate": cfg.learning_rate}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
         
 writer.close()
