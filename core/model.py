@@ -13,16 +13,17 @@ class Model(nn.Module):
 
         self.CONTEXT_IMAGE_SIZE = self.context_encoder.IMAGE_SIZE
         self.TARGET_IMAGE_SIZE = self.target_encoder.IMAGE_SIZE
+        self.NUM_ENCODER_FEATURES = self.context_encoder.NUM_FEATURES
 
         assert(self.context_encoder.NUM_FEATURES == self.target_encoder.NUM_FEATURES), "Context and target encoder must extract the same number of features."
-        
-        self.NUM_ENCODER_FEATURES = self.context_encoder.NUM_FEATURES
         
         self.tokenizer = Tokenizer()
 
         self.NUM_TOKEN_FEATURES = self.NUM_ENCODER_FEATURES
-        self.NUM_DECODER_HEADS = 8 # TODO: specify through config, check requirement that NUM_TOKEN_FEATURES must be divisible by NUM_DECODER_HEADS
+        self.NUM_DECODER_HEADS = 8 # TODO: specify through config
         self.NUM_DECODER_LAYERS = 6 # TODO: specify through config
+        
+        assert(self.NUM_TOKEN_FEATURES % self.NUM_DECODER_HEADS == 0), "NUM_TOKEN_FEATURES must be divisible by NUM_DECODER_HEADS."
 
         self.decoder_layers = nn.TransformerDecoderLayer(self.NUM_TOKEN_FEATURES, nhead=self.NUM_DECODER_HEADS)
         self.decoder = nn.TransformerDecoder(self.decoder_layers, self.NUM_DECODER_LAYERS)
@@ -64,12 +65,13 @@ class Model(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
+
 class Encoder(nn.Module):
 
     def __init__(self):
         super(Encoder, self).__init__()
 
-        self.encoder = torchvision.models.densenet169(pretrained=True).features
+        self.encoder = torchvision.models.densenet169(pretrained=False).features
         
         self.IMAGE_SIZE = (224, 224)
         self.NUM_FEATURES = 1664
@@ -107,6 +109,7 @@ class Tokenizer(nn.Module):
         # TODO: positional encoding
 
         return context_encoding, target_encoding
+
 
 class PositionalEncoding:
     pass
