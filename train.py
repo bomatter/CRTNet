@@ -75,6 +75,11 @@ else:
     start_epoch = 1
 
 writer = SummaryWriter(log_dir=os.path.join(args.outdir, "runs/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now())))
+context_images, target_images, labels = iter(dataloader).next()
+writer.add_images("context_image_batch", context_images) # add example context image batch to tensorboard log
+writer.add_images("target_image_batch", target_images) # add example target image batch to tensorboard log
+writer.add_graph(model, input_to_model=[context_images, target_images]) # add model graph to tensorboard log
+
 accuracy_logger = AccuracyLogger(dataset.idx2label)
 
 
