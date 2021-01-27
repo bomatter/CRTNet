@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, NUM_CLASSES):
+    def __init__(self, num_classes):
         super(Model, self).__init__()
 
         self.context_encoder = Encoder()
@@ -27,12 +27,11 @@ class Model(nn.Module):
         self.decoder_layers = nn.TransformerDecoderLayer(self.NUM_TOKEN_FEATURES, nhead=self.NUM_DECODER_HEADS)
         self.decoder = nn.TransformerDecoder(self.decoder_layers, self.NUM_DECODER_LAYERS)
 
-        self.NUM_CLASSES = NUM_CLASSES
+        self.NUM_CLASSES = num_classes
         
         self.classifier = nn.Linear(self.NUM_TOKEN_FEATURES, self.NUM_CLASSES)
 
-        # TODO: weight initialization (here or through separate function call since initialization is not necessary when restoring weights from checkpoint)
-        # self.initialize_weights()
+        self.initialize_weights()
 
     def forward(self, context_images, target_images):
 
@@ -55,9 +54,15 @@ class Model(nn.Module):
 
         return output
 
+    @torch.no_grad()
     def initialize_weights(self):
-        pass
+        for p in self.decoder.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
+        for p in self.classifier.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
 class Encoder(nn.Module):
 
