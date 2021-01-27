@@ -34,6 +34,7 @@ parser.add_argument("--test_frequency", type=int, default=1, help="Evaluate mode
 
 parser.add_argument("--epochs", type=int, default=1, help="Number of epochs to train.")
 parser.add_argument("--batch_size", type=int, help="Batchsize to use for training.")
+parser.add_argument("--save_frequency", type=int, default=1, help="Save model checkpoint every __ epochs.")
 parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
 args = parser.parse_args()
 
@@ -120,8 +121,9 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         print("{0:20} {1:10.4f}".format(name, acc))
 
     # save checkpoint
-    torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}, args.outdir + "/checkpoint_{}.tar".format(epoch))
-    print("Checkpoint saved.")
+    if epoch % args.save_frequency == 0:
+        torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}, args.outdir + "/checkpoint_{}.tar".format(epoch))
+        print("Checkpoint saved.")
 
     # save training accuracies
     accuracy_logger.save(args.outdir, name="train_accuracies_epoch_{}".format(epoch))
