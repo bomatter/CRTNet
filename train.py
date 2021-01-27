@@ -94,6 +94,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     for i, (context_images, target_images, labels) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
         context_images = context_images.to(device)
         target_images = target_images.to(device)
+        labels = labels.to(device)
 
         optimizer.zero_grad()
 
