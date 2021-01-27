@@ -1,4 +1,6 @@
+import os
 import argparse
+import datetime
 import pathlib
 import yaml
 
@@ -71,7 +73,7 @@ else:
     # TODO: weight initialization
     start_epoch = 1
 
-writer = SummaryWriter(log_dir=args.outdir)
+writer = SummaryWriter(log_dir=os.path.join(args.outdir, "runs/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now())))
 accuracy_logger = AccuracyLogger(dataset.idx2label)
 
 
@@ -84,12 +86,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     accuracy_logger.reset() # reset accuracy logger every epoch
 
     for i, (context_images, target_images, labels) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
-
-#    Debugging
-#    dl = iter(dataloader)
-#    for i in range(20):
-#        context_images, target_images, labels = next(dl)
-
         context_images = context_images.to(device)
         target_images = target_images.to(device)
 
