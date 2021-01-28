@@ -52,7 +52,7 @@ def create_config(args):
     if args.learning_rate is not None:
         cfg.learning_rate = args.learning_rate
     elif not hasattr(cfg, "learning_rate"):
-        cfg.learning_rate = 1e-3
+        cfg.learning_rate = 1e-5
 
     # add hash of last git commit to config if available
     try:
