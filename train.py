@@ -54,25 +54,25 @@ NUM_CLASSES = dataset.NUM_CLASSES
 print("Number of categories: {}".format(NUM_CLASSES))
 
 model = Model(NUM_CLASSES)
+
 assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
 
-optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate) # TODO: check if this is ok or if model parameters should be passed only after they have been initialized from checkpoint
+optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
 criterion = nn.CrossEntropyLoss() # TODO: implement custom loss for uncertainty gating
 
-# Initialize from checkpoint
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 if cfg.checkpoint is not None:
     print("Initializing from checkpoint {}".format(cfg.checkpoint))
     checkpoint = torch.load(cfg.checkpoint, map_location="cpu")
     model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(device) # need to send model to device before loading optimizer state dict
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
 else:
     print("No checkpoint was passed.")
+    model.to(device)
     start_epoch = 1
-
-# Send to device
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-model.to(device)
 
 # Tensorboard
 writer = SummaryWriter(log_dir=os.path.join(args.outdir, "runs/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now())))
