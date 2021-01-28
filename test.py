@@ -77,7 +77,6 @@ def test(model, annotations_file, image_dir, image_size, output_dir, epoch=None,
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()    
-    parser.add_argument("--config", type=str, help="(Optional) Path to config file. If additional commandline options are provided, they are used to modify the specifications in the conifg file.")
     parser.add_argument("--outdir", type=str, default="evaluation", help="Path to output folder (will be created if it does not exist).")
     parser.add_argument("--checkpoint", type=str, help="Path to model checkpoint.")
     parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
@@ -88,9 +87,9 @@ if __name__ == "__main__":
     parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
     args = parser.parse_args()
 
-    # TODO: load or create config
-
     assert(args.checkpoint is not None), "No checkpoint was passed. A checkpoint is required to load the model."
+
+    # TODO: could create config files for reproducibility of evaluation
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
