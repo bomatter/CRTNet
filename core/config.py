@@ -16,7 +16,7 @@ def create_config(args):
     # Load or create new config
     if args.config is not None:
         with open(args.config) as f:
-            cfg = ConfigDict(yaml.load(f))
+            cfg = ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
     else:
         cfg = ConfigDict()
 
@@ -72,5 +72,5 @@ def save_config(cfg, savedir):
         savedir: Path to folder where the config file should be saved.
     """
 
-    with open(os.path.join(savedir, "config.cfg"), "w") as f:
-        yaml.dump(cfg.to_yaml(), f)
+    with open(os.path.join(savedir, "config.yaml"), "w") as f:
+        yaml.dump(cfg, f)
