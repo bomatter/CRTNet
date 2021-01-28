@@ -59,27 +59,28 @@ assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate) # TODO: check if this is ok or if model parameters should be passed only after they have been initialized from checkpoint
 criterion = nn.CrossEntropyLoss() # TODO: implement custom loss for uncertainty gating
 
-# Send to device
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-model.to(device)
-
 # Initialize from checkpoint
 if cfg.checkpoint is not None:
     print("Initializing from checkpoint {}".format(cfg.checkpoint))
-    checkpoint = torch.load(cfg.checkpoint)
+    checkpoint = torch.load(cfg.checkpoint, map_location="cpu")
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
 else:
     print("No checkpoint was passed.")
-    # TODO: weight initialization
     start_epoch = 1
 
+# Send to device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+# Tensorboard
 writer = SummaryWriter(log_dir=os.path.join(args.outdir, "runs/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now())))
 context_images, target_images, labels = iter(dataloader).next()
 writer.add_images("context_image_batch", context_images) # add example context image batch to tensorboard log
 writer.add_images("target_image_batch", target_images) # add example target image batch to tensorboard log
 writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device)]) # add model graph to tensorboard log
+
 accuracy_logger = AccuracyLogger(dataset.idx2label)
 
 

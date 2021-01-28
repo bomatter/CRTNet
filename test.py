@@ -95,10 +95,10 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     print("Initializing model from checkpoint {}".format(args.checkpoint))
-    checkpoint = torch.load(args.checkpoint)
+    checkpoint = torch.load(args.checkpoint, map_location="cpu")
 
-    model = Model(args.num_classes) # TODO: would be nicer if inferred from annotations
-    model.to(device)
+    model = Model(args.num_classes) # TODO: would be nicer if num_classes was inferred from annotations
     model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(device)
 
     test(model, args.annotations, args.imagedir, args.image_size, args.outdir, record_individual_scores=args.record_individual_scores , print_batch_metrics=args.print_batch_metrics)
