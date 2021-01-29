@@ -40,6 +40,7 @@ def test(model, annotations_file, image_dir, image_size, output_dir, epoch=None,
         for i, (context_images, target_images, bbox, labels_cpu, annotation_ids) in enumerate(tqdm(dataloader, desc="Test Batches", leave=True)):
             context_images = context_images.to(device)
             target_images = target_images.to(device)
+            bbox = bbox.to(device)
             labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
             output = model(context_images, target_images, bbox) # output is (batchsize, num_classes) tensor of logits
