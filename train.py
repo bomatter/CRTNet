@@ -76,10 +76,10 @@ else:
 
 # Tensorboard
 writer = SummaryWriter(log_dir=os.path.join(args.outdir, "runs/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now())))
-context_images, target_images, labels = iter(dataloader).next()
+context_images, target_images, bbox, labels = iter(dataloader).next()
 writer.add_images("context_image_batch", context_images) # add example context image batch to tensorboard log
 writer.add_images("target_image_batch", target_images) # add example target image batch to tensorboard log
-writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device)]) # add model graph to tensorboard log
+writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device), bbox]) # add model graph to tensorboard log
 
 accuracy_logger = AccuracyLogger(dataset.idx2label)
 
@@ -92,14 +92,14 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     model.train() # set train mode
     accuracy_logger.reset() # reset accuracy logger every epoch
 
-    for i, (context_images, target_images, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
+    for i, (context_images, target_images, bbox, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
         context_images = context_images.to(device)
         target_images = target_images.to(device)
         labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
         optimizer.zero_grad()
 
-        output = model(context_images, target_images)
+        output = model(context_images, target_images, bbox)
         loss = criterion(output, labels)
         loss.backward()
 

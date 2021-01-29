@@ -42,7 +42,7 @@ def test(model, annotations_file, image_dir, image_size, output_dir, epoch=None,
             target_images = target_images.to(device)
             labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
-            output = model(context_images, target_images) # output is (batchsize, num_classes) tensor of logits
+            output = model(context_images, target_images, bbox) # output is (batchsize, num_classes) tensor of logits
             _, predictions = torch.max(output.detach().to("cpu"), 1) # choose idx with maximum score as prediction
             test_accuracy.update(predictions, labels_cpu)
 
