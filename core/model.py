@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8):
         super(Model, self).__init__()
 
         self.context_encoder = Encoder()
@@ -23,8 +23,8 @@ class Model(nn.Module):
 
         self.NUM_CONTEXT_TOKENS = self.tokenizer.NUM_CONTEXT_TOKENS
         self.NUM_TOKEN_FEATURES = self.NUM_ENCODER_FEATURES
-        self.NUM_DECODER_HEADS = 8 # TODO: specify through config
-        self.NUM_DECODER_LAYERS = 6 # TODO: specify through config
+        self.NUM_DECODER_HEADS = num_decoder_heads
+        self.NUM_DECODER_LAYERS = num_decoder_layers 
         
         assert(self.NUM_TOKEN_FEATURES % self.NUM_DECODER_HEADS == 0), "NUM_TOKEN_FEATURES must be divisible by NUM_DECODER_HEADS."
 

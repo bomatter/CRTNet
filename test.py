@@ -81,7 +81,12 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, help="Path to model checkpoint.")
     parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
     parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
+    
+    # TODO: would be nicer to load / infer model parameters from config or checkpoint
     parser.add_argument("--num_classes", type=int, default=33, help="Number of classes.")
+    parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
+    parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
+    
     parser.add_argument("--image_size", type=tuple, default=(224, 224), help="Input image size the model requires.")
     parser.add_argument('--record_individual_scores', action='store_true', default=False, help="If set, will log for each individual annotion how it was predicted and if the prediction was correct")
     parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
@@ -96,7 +101,7 @@ if __name__ == "__main__":
     print("Initializing model from checkpoint {}".format(args.checkpoint))
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
 
-    model = Model(args.num_classes) # TODO: would be nicer if num_classes was inferred from annotations
+    model = Model(args.num_classes, num_decoder_layers=args.num_decoder_layers, num_decoder_heads=args.num_decoder_heads)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device)
 
