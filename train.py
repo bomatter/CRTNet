@@ -149,6 +149,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
             writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
 
         if (args.epochs - epoch) / args.test_frequency < 1: # last evaluation
-            writer.add_hparams({"learning_rate": cfg.learning_rate}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
+            writer.add_hparams({"learning_rate": cfg.learning_rate, "num_decoder_layers": cfg.num_decoder_layers, "num_decoder_heads": cfg.num_decoder_heads}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
         
 writer.close()
