@@ -101,7 +101,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         bbox = bbox.to(device)
         labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
 
         output = model(context_images, target_images, bbox)
         loss = criterion(output, labels)
