@@ -7,7 +7,11 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8):
+    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, gpu_streams=True):
+        """
+        Arguments:
+            gpu_streams: if set to True and GPUs are available, multiple streams may be used to parallelize encoding.
+        """
         super(Model, self).__init__()
 
         self.context_encoder = Encoder()
@@ -39,14 +43,26 @@ class Model(nn.Module):
 
         self.initialize_weights()
 
+        # cuda streams for parallel encoding
+        self.gpu_streams = True if gpu_streams and torch.cuda.is_available() else False
+        self.target_stream = torch.cuda.Stream(priority=-1) if self.gpu_streams else None # set target stream as high priority because context encoding may not be necessary due to uncertainty gating
+        self.context_stream = torch.cuda.Stream() if self.gpu_streams else None
+
     def forward(self, context_images, target_images, target_bbox):
 
         # Encoding of both streams
-        # TODO: encoding could be done in parallel
-        target_encoding = self.target_encoder(target_images)
-        context_encoding = self.context_encoder(context_images)
-
-        # TODO: Uncertainty gating for target
+        if self.gpu_streams:
+            torch.cuda.synchronize()
+            
+        with torch.cuda.stream(self.target_stream):
+            target_encoding = self.target_encoder(target_images)
+            # TODO: Uncertainty gating for target
+            
+        with torch.cuda.stream(self.context_stream):
+            context_encoding = self.context_encoder(context_images)
+        
+        if self.gpu_streams:
+            torch.cuda.synchronize()
 
         # Tokenization and positional encoding
         context_encoding, target_encoding = self.tokenizer(context_encoding, target_encoding)
