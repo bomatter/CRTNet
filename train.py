@@ -22,8 +22,8 @@ from core.metrics import AccuracyLogger
 #
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", type=str, help="(Optional) Path to config file. If additional commandline options are provided, they are used to modify the specifications in the conifg file.")
-parser.add_argument("--outdir", type=str, default="output", help="Path to output folder (will be created if it does not exist).")
+parser.add_argument("--config", type=str, help="Path to config file. If additional commandline options are provided, they are used to modify the specifications in the config file.")
+parser.add_argument("--outdir", type=str, default="output/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now()), help="Path to output folder (will be created if it does not exist).")
 parser.add_argument("--checkpoint", type=str, help="Path to model checkpoint from which to continue training.")
 parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
 parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
@@ -43,7 +43,7 @@ parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder la
 args = parser.parse_args()
 
 # Create output directory
-pathlib.Path(args.outdir).mkdir(exist_ok=True)
+pathlib.Path(args.outdir).mkdir(exist_ok=True, parents=True)
 
 # Load config or create a new one and save it to outdir for reproducibility
 cfg = create_config(args)
