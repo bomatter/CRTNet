@@ -10,7 +10,7 @@ class Model(nn.Module):
     def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, gpu_streams=True):
         """
         Arguments:
-            gpu_streams: if set to True and GPUs are available, multiple streams may be used to parallelize encoding.
+            gpu_streams: if set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding.
         """
         super(Model, self).__init__()
 
@@ -57,7 +57,7 @@ class Model(nn.Module):
         with torch.cuda.stream(self.target_stream):
             target_encoding = self.target_encoder(target_images)
             # TODO: Uncertainty gating for target
-            
+
         with torch.cuda.stream(self.context_stream):
             context_encoding = self.context_encoder(context_images)
         
@@ -92,7 +92,7 @@ class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
 
-        self.encoder = torchvision.models.densenet169(pretrained=False).features
+        self.encoder = torchvision.models.densenet169(pretrained=True).features
         
         self.IMAGE_SIZE = (224, 224)
         self.NUM_FEATURES = 1664

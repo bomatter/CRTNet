@@ -50,7 +50,7 @@ cfg = create_config(args)
 save_config(cfg, args.outdir)
 print(cfg)
 
-dataset = COCODataset(args.annotations, args.imagedir, image_size = (224,224))
+dataset = COCODataset(args.annotations, args.imagedir, image_size = (224,224), normalize_means=[0.485, 0.456, 0.406], normalize_stds=[0.229, 0.224, 0.225])
 dataloader = DataLoader(dataset, batch_size=cfg.batch_size, num_workers=4, shuffle=True, pin_memory=True, drop_last=True)
 
 NUM_CLASSES = dataset.NUM_CLASSES

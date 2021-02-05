@@ -24,7 +24,7 @@ def test(model, annotations_file, image_dir, image_size, output_dir, epoch=None,
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    testset = COCODatasetWithID(annotations_file, image_dir, image_size)    
+    testset = COCODatasetWithID(annotations_file, image_dir, image_size, normalize_means=[0.485, 0.456, 0.406], normalize_stds=[0.229, 0.224, 0.225])
     dataloader = DataLoader(testset, batch_size=1, num_workers=1, shuffle=False, drop_last=False)
 
     if print_batch_metrics:
