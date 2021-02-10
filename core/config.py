@@ -54,6 +54,16 @@ def create_config(args):
     elif not hasattr(cfg, "learning_rate"):
         cfg.learning_rate = 1e-5
 
+    if args.num_decoder_layers is not None:
+        cfg.num_decoder_layers = args.num_decoder_layers
+    elif not hasattr(cfg, "num_decoder_layers"):
+        cfg.num_decoder_layers = 6
+
+    if args.num_decoder_heads is not None:
+        cfg.num_decoder_heads = args.num_decoder_heads
+    elif not hasattr(cfg, "num_decoder_heads"):
+        cfg.num_decoder_heads = 8
+
     # add hash of last git commit to config if available
     try:
         cfg.git = subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()

@@ -22,8 +22,8 @@ from core.metrics import AccuracyLogger
 #
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", type=str, help="(Optional) Path to config file. If additional commandline options are provided, they are used to modify the specifications in the conifg file.")
-parser.add_argument("--outdir", type=str, default="output", help="Path to output folder (will be created if it does not exist).")
+parser.add_argument("--config", type=str, help="Path to config file. If additional commandline options are provided, they are used to modify the specifications in the config file.")
+parser.add_argument("--outdir", type=str, default="output/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now()), help="Path to output folder (will be created if it does not exist).")
 parser.add_argument("--checkpoint", type=str, help="Path to model checkpoint from which to continue training.")
 parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
 parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
@@ -33,27 +33,30 @@ parser.add_argument("--test_imagedir", type=str, help="Path to images folder w.r
 parser.add_argument("--test_frequency", type=int, default=1, help="Evaluate model on test data every __ epochs.")
 
 parser.add_argument("--epochs", type=int, default=1, help="Number of epochs to train.")
-parser.add_argument("--batch_size", type=int, help="Batchsize to use for training.")
-parser.add_argument("--learning_rate", type=float, help="Learning rate to use for training.")
 parser.add_argument("--save_frequency", type=int, default=1, help="Save model checkpoint every __ epochs.")
 parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
+
+parser.add_argument("--batch_size", type=int, help="Batchsize to use for training.")
+parser.add_argument("--learning_rate", type=float, help="Learning rate to use for training.")
+parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
+parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
 args = parser.parse_args()
 
 # Create output directory
-pathlib.Path(args.outdir).mkdir(exist_ok=True)
+pathlib.Path(args.outdir).mkdir(exist_ok=True, parents=True)
 
 # Load config or create a new one and save it to outdir for reproducibility
 cfg = create_config(args)
 save_config(cfg, args.outdir)
 print(cfg)
 
-dataset = COCODataset(args.annotations, args.imagedir, image_size = (224,224))
+dataset = COCODataset(args.annotations, args.imagedir, image_size = (224,224), normalize_means=[0.485, 0.456, 0.406], normalize_stds=[0.229, 0.224, 0.225])
 dataloader = DataLoader(dataset, batch_size=cfg.batch_size, num_workers=4, shuffle=True, pin_memory=True, drop_last=True)
 
 NUM_CLASSES = dataset.NUM_CLASSES
 print("Number of categories: {}".format(NUM_CLASSES))
 
-model = Model(NUM_CLASSES)
+model = Model(NUM_CLASSES, num_decoder_layers=cfg.num_decoder_layers, num_decoder_heads=cfg.num_decoder_heads)
 
 assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
 
@@ -76,10 +79,10 @@ else:
 
 # Tensorboard
 writer = SummaryWriter(log_dir=os.path.join(args.outdir, "runs/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now())))
-context_images, target_images, labels = iter(dataloader).next()
+context_images, target_images, bbox, labels = iter(dataloader).next()
 writer.add_images("context_image_batch", context_images) # add example context image batch to tensorboard log
 writer.add_images("target_image_batch", target_images) # add example target image batch to tensorboard log
-writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device)]) # add model graph to tensorboard log
+writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device), bbox.to(device)]) # add model graph to tensorboard log
 
 accuracy_logger = AccuracyLogger(dataset.idx2label)
 
@@ -92,14 +95,15 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     model.train() # set train mode
     accuracy_logger.reset() # reset accuracy logger every epoch
 
-    for i, (context_images, target_images, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
+    for i, (context_images, target_images, bbox, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
         context_images = context_images.to(device)
         target_images = target_images.to(device)
+        bbox = bbox.to(device)
         labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
 
-        output = model(context_images, target_images)
+        output = model(context_images, target_images, bbox)
         loss = criterion(output, labels)
         loss.backward()
 
@@ -145,6 +149,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
             writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
 
         if (args.epochs - epoch) / args.test_frequency < 1: # last evaluation
-            writer.add_hparams({"learning_rate": cfg.learning_rate}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
+            writer.add_hparams({"learning_rate": cfg.learning_rate, "num_decoder_layers": cfg.num_decoder_layers, "num_decoder_heads": cfg.num_decoder_heads}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
         
 writer.close()

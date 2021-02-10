@@ -13,7 +13,9 @@ from collections import OrderedDict
 class COCODataset(Dataset):
     """
     Dataset to load data in COCO-style format and provide samples corresponding to individual objects.
-    A sample consists of a target image (cropped to the objects bounding box), a context image (entire image) and a label in [0,num_classes].
+    A sample consists of a target image (cropped to the objects bounding box), a context image (entire image),
+    the bounding box coordinates of the target object ([xmin, ymin, w, h]) relative to the image size (e.g., (0.5,0.5)
+    are the coords of the point in the middle of the image) and a label in [0,num_classes].
     """
 
     def __init__(self, annotations_file, image_dir, image_size, idx2label=None, normalize_means=None, normalize_stds=None):
@@ -75,8 +77,11 @@ class COCODataset(Dataset):
         image = Image.open(self.id2file[annotation["image_id"]])
         image = image.convert("RGB")
         
-        # crop to bounding box for target image
+        # compute bounding box coordinates relative to the image size
         xmin, ymin, w, h = annotation["bbox"]
+        bbox_relative = torch.tensor([xmin / image.width, ymin / image.height, w / image.width, h / image.height])
+
+        # crop to bounding box for target image
         target_image = image.crop((int(xmin), int(ymin), int(xmin + w), int(ymin + h)))
 
         # resize
@@ -94,7 +99,7 @@ class COCODataset(Dataset):
 
         label = self.id2idx[annotation["category_id"]]
 
-        return image, target_image, label
+        return image, target_image, bbox_relative, label
 
 
 class COCODatasetWithID(COCODataset):
