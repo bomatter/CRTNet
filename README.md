@@ -31,7 +31,7 @@ Our model – BigPictureNet – is designed to shrink this gap between human and
 
 - All relevant components are implemented in `core/`.
 - We use COCO-style annotations for train and test sets. An example can be found in the `debug/` folder.
-- Training and testing can be performed with `train.py` and `test.py` respectively. Annotations, image directory and relevant parameters should be set via command line arguments. Available command line arguments and can be displayed by running `python train.py --help` and `python test.py --help` respectively.
+- Training and testing can be performed with `train.py` and `test.py` respectively. Annotations, image directory and relevant parameters should be set via command line arguments. Available command line arguments can be displayed by running `python train.py --help` and `python test.py --help` respectively.
 
 
 
