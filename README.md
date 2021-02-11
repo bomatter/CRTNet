@@ -1,6 +1,6 @@
-	<h1 align="center">
-	    <img src="doc/BigPictureNet.png" alt="BigPictureNet">
-	</h1>
+<h1 align="center">
+  <img src="doc/BigPictureNet.png" alt="BigPictureNet">
+</h1>
 
 <h4 align="center">An object recognition model that leverages context information.</h4>
 
