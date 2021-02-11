@@ -1,14 +1,12 @@
-<h1 align="center">
+<div align="center">
   <img src="doc/BigPictureNet.png" alt="BigPictureNet">
-</h1>
 
-<h4 align="center">An object recognition model that leverages context information.</h4>
+  <h4>An object recognition model that leverages context information.</h4>
 
-<p align="center">
   <a href="#about">About</a> •
-  <a href="#BigPictureNet model">BigPictureNet Model</a> •
-  <a href="#code architecture">Code Architecture</a>
-</p>
+  <a href="#bigpicturenet-model">BigPictureNet Model</a> •
+  <a href="#code-architecture">Code Architecture</a>
+</div>
 
 
 
@@ -24,9 +22,9 @@ Our model – BigPictureNet – is designed to shrink this gap between human and
 
 
 ## BigPictureNet Model
-
-<img src="doc/model_architecture.png" alt="model_architecture" />
-
+<div align="center">
+  <img src="doc/model_architecture.png" alt="model_architecture">
+</div>
 
 
 ## Code Architecture
