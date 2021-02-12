@@ -7,12 +7,15 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, gpu_streams=True):
+    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_threshold=0, gpu_streams=True):
         """
         Arguments:
+            uncertainty_threshold: used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, additional computations are necessary.
             gpu_streams: if set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding.
         """
         super(Model, self).__init__()
+
+        self.NUM_CLASSES = num_classes
 
         self.context_encoder = Encoder()
         self.target_encoder = Encoder()
@@ -23,6 +26,10 @@ class Model(nn.Module):
 
         assert(self.context_encoder.NUM_FEATURES == self.target_encoder.NUM_FEATURES), "Context and target encoder must extract the same number of features."
         
+        self.uncertainty_gate = UncertaintyGate(self.NUM_ENCODER_FEATURES, self.NUM_CLASSES)
+        
+        self.UNCERTAINTY_THRESHOLD = uncertainty_threshold
+
         self.tokenizer = Tokenizer()
 
         self.NUM_CONTEXT_TOKENS = self.tokenizer.NUM_CONTEXT_TOKENS
@@ -36,9 +43,7 @@ class Model(nn.Module):
 
         self.decoder_layers = nn.TransformerDecoderLayer(self.NUM_TOKEN_FEATURES, nhead=self.NUM_DECODER_HEADS)
         self.decoder = nn.TransformerDecoder(self.decoder_layers, self.NUM_DECODER_LAYERS)
-
-        self.NUM_CLASSES = num_classes
-        
+ 
         self.classifier = nn.Linear(self.NUM_TOKEN_FEATURES, self.NUM_CLASSES)
 
         self.initialize_weights()
@@ -56,8 +61,15 @@ class Model(nn.Module):
             
         with torch.cuda.stream(self.target_stream):
             target_encoding = self.target_encoder(target_images)
-            # TODO: Uncertainty gating for target
-
+            
+            # Uncertainty gating for target
+            prediction, uncertainty = self.uncertainty_gate(target_encoding) # predictions and associated confidence metrics
+            
+            # During inference, return prediction if prediction uncertainty is below the specified uncertainty threshold.
+            # Note: The current implementation makes the gating decision on a per-batch basis. We expect/recommend that a batch size of 1 is used for inference.
+            if not self.training and torch.all(uncertainty < self.UNCERTAINTY_THRESHOLD).item():
+                return prediction
+            
         with torch.cuda.stream(self.context_stream):
             context_encoding = self.context_encoder(context_images)
         
@@ -74,7 +86,10 @@ class Model(nn.Module):
         # Classification
         output = self.classifier(target_encoding.squeeze(0))
 
-        return output
+        if self.training:
+            return prediction, output # return both predictions (from uncertainty gating branch and main branch)
+        else:
+            return output
 
     @torch.no_grad()
     def initialize_weights(self):
@@ -86,6 +101,13 @@ class Model(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
+    def freeze_target_encoder(self):
+        for param in self.target_encoder.parameters():
+            param.requires_grad = False
+
+    def unfreeze_target_encoder(self):
+        for param in self.target_encoder.parameters():
+            param.requires_grad = True
 
 class Encoder(nn.Module):
 
@@ -119,13 +141,13 @@ class Tokenizer(nn.Module):
         """
 
         # one target token
-        target_encoding = F.relu(target_encoding, inplace=True)
+        target_encoding = F.relu(target_encoding)
         target_encoding = F.adaptive_avg_pool2d(target_encoding, (1, 1))
         target_encoding = torch.flatten(target_encoding, 1) # output dimension: (Batchsize, NUM_ENCODER_FEATURES)
         target_encoding = torch.unsqueeze(target_encoding, 0) # output dimension: (NUM_TARGET_TOKENS=1, BATCH_SIZE, NUM_TOKEN_FEATURES=NUM_ENCODER_FEATURES)
 
         # 49 context tokens
-        context_encoding = F.relu(context_encoding, inplace=True)
+        context_encoding = F.relu(context_encoding)
         context_encoding = torch.flatten(context_encoding, 2, 3)
         context_encoding = context_encoding.permute(2, 0, 1) # output dimension: (NUM_CONTEXT_TOKENS=49, BATCH_SIZE, NUM_TOKEN_FEATURES=NUM_ENCODER_FEATURES)
 
@@ -161,6 +183,33 @@ class PositionalEncoding(nn.Module):
 
         return token_ids
         
+    @torch.no_grad()
+    def initialize_weights(self):
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+
+class UncertaintyGate(nn.Module):
+
+    def __init__(self, num_features, num_classes):
+        super(UncertaintyGate, self).__init__()
+        self.target_classifier = nn.Linear(num_features, num_classes)
+        self.initialize_weights()
+
+    def forward(self, input_features):
+        # TODO: could add a few layers here
+        
+        # flatten featuremap out
+        input_features = F.relu(input_features)
+        input_features = F.adaptive_avg_pool2d(input_features, (1, 1))
+        input_features = torch.flatten(input_features, 1) # output dimension: (Batchsize, NUM_ENCODER_FEATURES)
+        
+        predictions = self.target_classifier(input_features)
+        entropy = -1 * torch.sum(F.softmax(predictions.detach(), dim=1) * F.log_softmax(predictions.detach(), dim=1), dim=1) # entropy as metric for uncertainty
+
+        return predictions, entropy
+
     @torch.no_grad()
     def initialize_weights(self):
         for p in self.parameters():

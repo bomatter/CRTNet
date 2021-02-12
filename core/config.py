@@ -64,6 +64,11 @@ def create_config(args):
     elif not hasattr(cfg, "num_decoder_heads"):
         cfg.num_decoder_heads = 8
 
+    if args.uncertainty_threshold is not None:
+        cfg.uncertainty_threshold = args.uncertainty_threshold
+    elif not hasattr(cfg, "uncertainty_threshold"):
+        cfg.uncertainty_threshold = 0
+
     # add hash of last git commit to config if available
     try:
         cfg.git = subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()

@@ -40,6 +40,7 @@ parser.add_argument("--batch_size", type=int, help="Batchsize to use for trainin
 parser.add_argument("--learning_rate", type=float, help="Learning rate to use for training.")
 parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
 parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
+parser.add_argument("--uncertainty_threshold", type=float, help="Uncertainty threshold for the uncertainty gating module.")
 args = parser.parse_args()
 
 # Create output directory
@@ -84,8 +85,8 @@ writer.add_images("context_image_batch", context_images) # add example context i
 writer.add_images("target_image_batch", target_images) # add example target image batch to tensorboard log
 writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device), bbox.to(device)]) # add model graph to tensorboard log
 
-accuracy_logger = AccuracyLogger(dataset.idx2label)
-
+accuracy_logger_main_branch = AccuracyLogger(dataset.idx2label)
+accuracy_logger_uncertainty_branch = AccuracyLogger(dataset.idx2label)
 
 ## Training
 #
@@ -93,7 +94,8 @@ accuracy_logger = AccuracyLogger(dataset.idx2label)
 for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs", leave=True):
 
     model.train() # set train mode
-    accuracy_logger.reset() # reset accuracy logger every epoch
+    accuracy_logger_main_branch.reset() # reset accuracy logger every epoch
+    accuracy_logger_uncertainty_branch.reset() # reset accuracy logger every epoch
 
     for i, (context_images, target_images, bbox, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
         context_images = context_images.to(device)
@@ -101,43 +103,60 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         bbox = bbox.to(device)
         labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
+        output_uncertainty_branch , output_main_branch = model(context_images, target_images, bbox)
+
+        # backpropagation through both branches
         optimizer.zero_grad(set_to_none=True)
 
-        output = model(context_images, target_images, bbox)
-        loss = criterion(output, labels)
-        loss.backward()
+        model.freeze_target_encoder() # freeze target encoder such that gradients are only computed for uncertainty branch
+        loss_uncertainty_branch = criterion(output_uncertainty_branch, labels)
+        loss_uncertainty_branch.backward(retain_graph=True)
+
+        model.unfreeze_target_encoder() # unfreeze target encoder such that it can be trained with the main branch
+        loss_main_branch = criterion(output_main_branch, labels)
+        loss_main_branch.backward()
 
         optimizer.step()
-
+        
         # log metrics
-        _, predictions = torch.max(output.detach().to("cpu"), 1) # choose idx with maximum score as prediction
-        batch_accuracy = sum(predictions == labels_cpu) / cfg.batch_size
-        accuracy_logger.update(predictions, labels_cpu)
-        batch_loss = loss.item()
+        _, predictions_uncertainty_branch = torch.max(output_uncertainty_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction
+        batch_accuracy_uncertainty_branch = sum(predictions_uncertainty_branch == labels_cpu) / cfg.batch_size
+        batch_loss_uncertainty_branch = loss_uncertainty_branch.item()
+        writer.add_scalar("Batch Accuracy Uncertainty Branch/train", batch_accuracy_uncertainty_branch, i + (epoch - 1) * len(dataloader))
+        writer.add_scalar("Batch Loss Uncertainty Branch/train", batch_loss_uncertainty_branch, i + (epoch - 1) * len(dataloader))
+        accuracy_logger_uncertainty_branch.update(predictions_uncertainty_branch, labels_cpu)
 
-        writer.add_scalar("Batch Loss/train", batch_loss, i + (epoch - 1) * len(dataloader))
-        writer.add_scalar("Batch Accuracy/train", batch_accuracy, i + (epoch - 1) * len(dataloader))
+        _, predictions_main_branch = torch.max(output_main_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction
+        batch_accuracy_main_branch = sum(predictions_main_branch == labels_cpu) / cfg.batch_size
+        batch_loss_main_branch = loss_main_branch.item()
+        writer.add_scalar("Batch Accuracy Main Branch/train", batch_accuracy_main_branch, i + (epoch - 1) * len(dataloader))
+        writer.add_scalar("Batch Loss Main Branch/train", batch_loss_main_branch, i + (epoch - 1) * len(dataloader))
+        accuracy_logger_main_branch.update(predictions_main_branch, labels_cpu)
 
         if args.print_batch_metrics:
-            print("\t Epoch {}, Batch {}: \t Loss: {} \t Accuracy: {}".format(epoch, i, batch_loss, batch_accuracy))
+            print("\t Epoch {}, Batch {}: \t Loss: {} \t Accuracy: {}".format(epoch, i, batch_loss_main_branch, batch_accuracy_main_branch))
 
 
     # log metrics
-    writer.add_scalar("Total Accuracy/train", accuracy_logger.accuracy(), epoch * len(dataloader))
-    print("\nEpoch {}, Train Accuracy: {}".format(epoch, accuracy_logger.accuracy()))
+    writer.add_scalar("Total Accuracy Main Branch/train", accuracy_logger_main_branch.accuracy(), epoch * len(dataloader))
+    writer.add_scalar("Total Accuracy Uncertainty Branch/train", accuracy_logger_uncertainty_branch.accuracy(), epoch * len(dataloader))
 
+    print("\nEpoch {}, Train Accuracy: {}".format(epoch, accuracy_logger_main_branch.accuracy()))
     print("{0:20} {1:10}".format("Class", "Accuracy")) # header
-    for name, acc in accuracy_logger.named_class_accuarcies().items():
-        writer.add_scalar("Class Accuracies/train/{}".format(name), acc, epoch * len(dataloader))
+    for name, acc in accuracy_logger_main_branch.named_class_accuarcies().items():
+        writer.add_scalar("Class Accuracies Main Branch/train/{}".format(name), acc, epoch * len(dataloader))
         print("{0:20} {1:10.4f}".format(name, acc))
 
-    # save checkpoint
+    for name, acc in accuracy_logger_uncertainty_branch.named_class_accuarcies().items():
+        writer.add_scalar("Class Accuracies Uncertainty Branch/train/{}".format(name), acc, epoch * len(dataloader))
+
+    # save checkpoint and training accuracies
     if epoch % args.save_frequency == 0:
         torch.save({'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}, args.outdir + "/checkpoint_{}.tar".format(epoch))
         print("Checkpoint saved.")
 
-    # save training accuracies
-    accuracy_logger.save(args.outdir, name="train_accuracies_epoch_{}".format(epoch))
+        accuracy_logger_main_branch.save(args.outdir, name="train_accuracies_epoch_{}".format(epoch))
+        accuracy_logger_uncertainty_branch.save(args.outdir, name="train_accuracies_uncertainty_branch_epoch_{}".format(epoch))
     
     # evaluation on test data
     if cfg.test_annotations is not None and cfg.test_imagedir is not None and epoch % args.test_frequency == 0:
@@ -149,6 +168,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
             writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
 
         if (args.epochs - epoch) / args.test_frequency < 1: # last evaluation
-            writer.add_hparams({"learning_rate": cfg.learning_rate, "num_decoder_layers": cfg.num_decoder_layers, "num_decoder_heads": cfg.num_decoder_heads}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
+            writer.add_hparams({"learning_rate": cfg.learning_rate, "num_decoder_layers": cfg.num_decoder_layers, "num_decoder_heads": cfg.num_decoder_heads, "uncertainty_threshold": cfg.uncertainty_threshold}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
         
 writer.close()
