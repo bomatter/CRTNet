@@ -1,6 +1,10 @@
 import os
 import json
 import torch
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 class AccuracyLogger():
     """
@@ -111,3 +115,60 @@ class IndividualScoreLogger():
         """
         with open(os.path.join(savedir, name +".json"), "w") as f:
             json.dump(self.log, f)
+
+
+class DualPredictionLogger():
+    """
+    Logs predictions of both branches along with the uncertainty metric of the uncertainty gate and the ground truth.
+    This can be useful to estimate a good threshold for the uncertainty gating module.
+    """
+
+    def __init__(self):
+        self.log = []
+
+    def update(self, predictions_uncertainty_branch, predictions_main_branch, uncertainty, groundtruth):
+        assert(len(predictions_uncertainty_branch) == len(predictions_main_branch) and len(predictions_uncertainty_branch) == len(uncertainty) and
+               len(predictions_uncertainty_branch) == len(groundtruth)), "Predictions, groundtruth and uncertainty values should be of the same length."
+
+        self.log.extend([[p_u.item(), p_m.item(), u.item(), gt.item()] for p_u, p_m, u, gt in zip(predictions_uncertainty_branch, predictions_main_branch, uncertainty, groundtruth)])
+        
+    def reset(self):
+        self.log = []
+
+    def save(self, savedir, name="dual_predictions"):
+        """
+        Saves logged information to "savedir/name.json".
+        """
+        with open(os.path.join(savedir, name +".json"), "w") as f:
+            json.dump(self.log, f)
+
+    def save_dataframe(self, savedir, name="dual_predictions"):
+        """
+        Converts logged information to a pandas DataFrame and saves it in json format to "savedir/name.json".
+        """
+        data = pd.DataFrame(data=self.log, columns=["prediction_uncertainty_branch", "prediction_main_branch", "uncertainty", "groundtruth"])
+
+        with open(os.path.join(savedir, name +".json"), "w") as f:
+            data.to_json(f)
+
+    def plot_accuracy_vs_threshold(self):
+        """
+        Returns a matplotlib figure with a plot of the accuracy computed for different uncertainty threshold values.
+        """
+        data = pd.DataFrame(data=self.log, columns=["prediction_uncertainty_branch", "prediction_main_branch", "uncertainty", "groundtruth"])
+
+        range_min = data.uncertainty.min()
+        range_max = data.uncertainty.max()
+        threshold_range = np.linspace(range_min, range_max, num=50)
+
+        # Compute accuracy for each threshold
+        # Note: the accuarcy is not computed within classes before averaged across classes here. This is therefore susceptible to class imbalance.
+        accuracies = np.array([data.apply(lambda row: row["prediction_uncertainty_branch"] == row["groundtruth"] if row["uncertainty"] < t else row["prediction_main_branch"] == row["groundtruth"], axis=1).mean() for t in threshold_range])
+
+        fig = plt.figure()
+        sns.set_theme()
+        sns.lineplot(x=threshold_range, y=accuracies, color="darkblue")
+        plt.xlabel("uncertainty threshold")
+        plt.ylabel("accuracy")
+
+        return fig

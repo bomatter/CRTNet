@@ -16,7 +16,7 @@ from test import test
 from core.config import create_config, save_config
 from core.dataset import COCODataset
 from core.model import Model
-from core.metrics import AccuracyLogger
+from core.metrics import AccuracyLogger, DualPredictionLogger
 
 
 ## Initialization
@@ -90,6 +90,7 @@ with warnings.catch_warnings(): # add_graph method is known to issue a warning
 
 accuracy_logger_main_branch = AccuracyLogger(dataset.idx2label)
 accuracy_logger_uncertainty_branch = AccuracyLogger(dataset.idx2label)
+dual_prediction_logger = DualPredictionLogger()
 
 ## Training
 #
@@ -98,7 +99,8 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
 
     model.train() # set train mode
     accuracy_logger_main_branch.reset() # reset accuracy logger every epoch
-    accuracy_logger_uncertainty_branch.reset() # reset accuracy logger every epoch
+    accuracy_logger_uncertainty_branch.reset()
+    dual_prediction_logger.reset()
 
     for i, (context_images, target_images, bbox, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
         context_images = context_images.to(device)
@@ -106,7 +108,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         bbox = bbox.to(device)
         labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
-        output_uncertainty_branch , output_main_branch = model(context_images, target_images, bbox)
+        output_uncertainty_branch , output_main_branch, uncertainty = model(context_images, target_images, bbox)
 
         # backpropagation through both branches
         optimizer.zero_grad(set_to_none=True)
@@ -136,6 +138,9 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         writer.add_scalar("Batch Loss Main Branch/train", batch_loss_main_branch, i + (epoch - 1) * len(dataloader))
         accuracy_logger_main_branch.update(predictions_main_branch, labels_cpu)
 
+        writer.add_scalar("Batch Uncertainty/train", torch.mean(uncertainty), i + (epoch - 1) * len(dataloader))
+        dual_prediction_logger.update(predictions_uncertainty_branch, predictions_main_branch, uncertainty, labels_cpu)
+
         if args.print_batch_metrics:
             print("\t Epoch {}, Batch {}: \t Loss: {} \t Accuracy: {}".format(epoch, i, batch_loss_main_branch, batch_accuracy_main_branch))
 
@@ -143,6 +148,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     # log metrics
     writer.add_scalar("Total Accuracy Main Branch/train", accuracy_logger_main_branch.accuracy(), epoch * len(dataloader))
     writer.add_scalar("Total Accuracy Uncertainty Branch/train", accuracy_logger_uncertainty_branch.accuracy(), epoch * len(dataloader))
+    writer.add_figure("Uncertainty Threshold Curve", dual_prediction_logger.plot_accuracy_vs_threshold(), epoch * len(dataloader))
 
     print("\nEpoch {}, Train Accuracy: {}".format(epoch, accuracy_logger_main_branch.accuracy()))
     print("{0:20} {1:10}".format("Class", "Accuracy")) # header

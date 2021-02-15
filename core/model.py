@@ -87,7 +87,7 @@ class Model(nn.Module):
         output = self.classifier(target_encoding.squeeze(0))
 
         if self.training:
-            return prediction, output # return both predictions (from uncertainty gating branch and main branch)
+            return prediction, output, uncertainty # return both predictions (from uncertainty gating branch and main branch) and uncertainty
         else:
             return output
 
