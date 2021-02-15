@@ -4,7 +4,6 @@ import torch
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 class AccuracyLogger():
     """
@@ -166,9 +165,9 @@ class DualPredictionLogger():
         accuracies = np.array([data.apply(lambda row: row["prediction_uncertainty_branch"] == row["groundtruth"] if row["uncertainty"] < t else row["prediction_main_branch"] == row["groundtruth"], axis=1).mean() for t in threshold_range])
 
         fig = plt.figure()
-        sns.set_theme()
-        sns.lineplot(x=threshold_range, y=accuracies, color="darkblue")
+        plt.plot(threshold_range, accuracies, color="darkblue")
         plt.xlabel("uncertainty threshold")
         plt.ylabel("accuracy")
+        plt.grid()
 
         return fig
