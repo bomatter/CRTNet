@@ -1,4 +1,5 @@
 import os
+import warnings
 import argparse
 import datetime
 import pathlib
@@ -83,7 +84,9 @@ writer = SummaryWriter(log_dir=os.path.join(args.outdir, "runs/{date:%Y-%m-%d_%H
 context_images, target_images, bbox, labels = iter(dataloader).next()
 writer.add_images("context_image_batch", context_images) # add example context image batch to tensorboard log
 writer.add_images("target_image_batch", target_images) # add example target image batch to tensorboard log
-writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device), bbox.to(device)]) # add model graph to tensorboard log
+with warnings.catch_warnings(): # add_graph method is known to issue a warning
+    warnings.simplefilter("ignore")
+    writer.add_graph(model, input_to_model=[context_images.to(device), target_images.to(device), bbox.to(device)]) # add model graph to tensorboard log
 
 accuracy_logger_main_branch = AccuracyLogger(dataset.idx2label)
 accuracy_logger_uncertainty_branch = AccuracyLogger(dataset.idx2label)
