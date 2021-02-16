@@ -3,9 +3,8 @@ import warnings
 import argparse
 import datetime
 import pathlib
-import yaml
 
-import torch, torchvision
+import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter

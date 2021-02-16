@@ -1,11 +1,10 @@
 import os
 import json
-import math
 
 import torch
 
 from torch.utils.data import Dataset
-from torchvision.transforms.functional import to_tensor, pad, normalize
+from torchvision.transforms.functional import to_tensor, normalize
 
 from PIL import Image
 from collections import OrderedDict
