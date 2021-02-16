@@ -86,6 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_classes", type=int, default=33, help="Number of classes.")
     parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
     parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
+    parser.add_argument("--uncertainty_threshold", type=float, default=0, help="Uncertainty threshold for the uncertainty gating module.")
     
     parser.add_argument("--image_size", type=tuple, default=(224, 224), help="Input image size the model requires.")
     parser.add_argument('--record_individual_scores', action='store_true', default=False, help="If set, will log for each individual annotion how it was predicted and if the prediction was correct")
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     print("Initializing model from checkpoint {}".format(args.checkpoint))
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
 
-    model = Model(args.num_classes, num_decoder_layers=args.num_decoder_layers, num_decoder_heads=args.num_decoder_heads)
+    model = Model(args.num_classes, num_decoder_layers=args.num_decoder_layers, num_decoder_heads=args.num_decoder_heads, uncertainty_threshold=args.uncertainty_threshold)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device)
 

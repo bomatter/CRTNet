@@ -58,7 +58,7 @@ dataloader = DataLoader(dataset, batch_size=cfg.batch_size, num_workers=4, shuff
 NUM_CLASSES = dataset.NUM_CLASSES
 print("Number of categories: {}".format(NUM_CLASSES))
 
-model = Model(NUM_CLASSES, num_decoder_layers=cfg.num_decoder_layers, num_decoder_heads=cfg.num_decoder_heads)
+model = Model(NUM_CLASSES, num_decoder_layers=cfg.num_decoder_layers, num_decoder_heads=cfg.num_decoder_heads, uncertainty_threshold=cfg.uncertainty_threshold)
 
 assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
 
