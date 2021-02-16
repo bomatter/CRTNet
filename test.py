@@ -83,9 +83,9 @@ if __name__ == "__main__":
     parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
     
     # TODO: would be nicer to load / infer model parameters from config or checkpoint
-    parser.add_argument("--num_classes", type=int, default=33, help="Number of classes.")
-    parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
-    parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
+    parser.add_argument("--num_classes", type=int, default=15, help="Number of classes.")
+    parser.add_argument("--num_decoder_heads", type=int, default=8, help="Number of decoder heads.")
+    parser.add_argument("--num_decoder_layers", type=int, default=6, help="Number of decoder layers.")
     parser.add_argument("--uncertainty_threshold", type=float, default=0, help="Uncertainty threshold for the uncertainty gating module.")
     
     parser.add_argument("--image_size", type=tuple, default=(224, 224), help="Input image size the model requires.")
