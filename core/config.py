@@ -16,7 +16,7 @@ def create_config(args):
     # Load or create new config
     if args.config is not None:
         with open(args.config) as f:
-            cfg = ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
+            cfg = ConfigDict(yaml.load(f, Loader=yaml.Loader))
     else:
         cfg = ConfigDict()
 
@@ -67,7 +67,7 @@ def create_config(args):
     if args.uncertainty_threshold is not None:
         cfg.uncertainty_threshold = args.uncertainty_threshold
     elif not hasattr(cfg, "uncertainty_threshold"):
-        cfg.uncertainty_threshold = 0
+        cfg.uncertainty_threshold = 0.
 
     # add hash of last git commit to config if available
     try:
