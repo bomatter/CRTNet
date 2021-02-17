@@ -51,7 +51,7 @@ cfg = create_config(args)
 save_config(cfg, args.outdir)
 print(cfg)
 
-dataset = COCODataset(cfg.annotations, cfg.imagedir, image_size = (224,224), normalize_means=[0.485, 0.456, 0.406], normalize_stds=[0.229, 0.224, 0.225])
+dataset = COCODataset(cfg.annotations, cfg.imagedir, image_size =(224,224), normalize_means=[0.485, 0.456, 0.406], normalize_stds=[0.229, 0.224, 0.225])
 dataloader = DataLoader(dataset, batch_size=cfg.batch_size, num_workers=4, shuffle=True, pin_memory=True, drop_last=True)
 
 NUM_CLASSES = dataset.NUM_CLASSES
@@ -62,7 +62,7 @@ model = Model(NUM_CLASSES, num_decoder_layers=cfg.num_decoder_layers, num_decode
 assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
 
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
-criterion = nn.CrossEntropyLoss() # TODO: implement custom loss for uncertainty gating
+criterion = nn.CrossEntropyLoss()
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -169,7 +169,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     # evaluation on test data
     if cfg.test_annotations is not None and cfg.test_imagedir is not None and epoch % args.test_frequency == 0:
         print("Starting evaluation on test data.")
-        test_accuracy = test(model, cfg.test_annotations, cfg.test_imagedir, image_size=dataset.image_size, output_dir=args.outdir, epoch=epoch)
+        test_accuracy = test(model, cfg.test_annotations, cfg.test_imagedir, outdir=args.outdir, epoch=epoch)
 
         writer.add_scalar("Total Accuracy/test", test_accuracy.accuracy(), epoch * len(dataloader))
         for name, acc in test_accuracy.named_class_accuarcies().items():
