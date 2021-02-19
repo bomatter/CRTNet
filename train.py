@@ -12,10 +12,11 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from test import test
+from utils.evaluate_uncertainty import evaluate_uncertainty
 from core.config import create_config, save_config
 from core.dataset import COCODataset
 from core.model import Model
-from core.metrics import AccuracyLogger, DualPredictionLogger
+from core.metrics import AccuracyLogger
 
 
 ## Initialization
@@ -40,7 +41,7 @@ parser.add_argument("--batch_size", type=int, help="Batchsize to use for trainin
 parser.add_argument("--learning_rate", type=float, help="Learning rate to use for training.")
 parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
 parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
-parser.add_argument("--uncertainty_threshold", type=float, help="Uncertainty threshold for the uncertainty gating module.")
+parser.add_argument("--uncertainty_threshold", type=float, help="Uncertainty threshold for the uncertainty gating module. Note that training does not depend on the threshold, the model can still be used with different thresholds later.")
 args = parser.parse_args()
 
 # Create output directory
@@ -70,7 +71,7 @@ if cfg.checkpoint is not None:
     print("Initializing from checkpoint {}".format(cfg.checkpoint))
     checkpoint = torch.load(cfg.checkpoint, map_location="cpu")
     model.load_state_dict(checkpoint['model_state_dict'])
-    model.to(device) # need to send model to device before loading optimizer state dict
+    model.to(device)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
 else:
@@ -89,7 +90,7 @@ with warnings.catch_warnings(): # add_graph method is known to issue a warning
 
 accuracy_logger_main_branch = AccuracyLogger(dataset.idx2label)
 accuracy_logger_uncertainty_branch = AccuracyLogger(dataset.idx2label)
-dual_prediction_logger = DualPredictionLogger()
+
 
 ## Training
 #
@@ -99,7 +100,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     model.train() # set train mode
     accuracy_logger_main_branch.reset() # reset accuracy logger every epoch
     accuracy_logger_uncertainty_branch.reset()
-    dual_prediction_logger.reset()
 
     for i, (context_images, target_images, bbox, labels_cpu) in enumerate(tqdm(dataloader, position=1, desc="Batches", leave=True)):
         context_images = context_images.to(device)
@@ -138,7 +138,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         accuracy_logger_main_branch.update(predictions_main_branch, labels_cpu)
 
         writer.add_scalar("Batch Uncertainty/train", torch.mean(uncertainty), i + (epoch - 1) * len(dataloader))
-        dual_prediction_logger.update(predictions_uncertainty_branch, predictions_main_branch, uncertainty, labels_cpu)
 
         if args.print_batch_metrics:
             print("\t Epoch {}, Batch {}: \t Loss: {} \t Accuracy: {}".format(epoch, i, batch_loss_main_branch, batch_accuracy_main_branch))
@@ -147,7 +146,6 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
     # log metrics
     writer.add_scalar("Total Accuracy Main Branch/train", accuracy_logger_main_branch.accuracy(), epoch * len(dataloader))
     writer.add_scalar("Total Accuracy Uncertainty Branch/train", accuracy_logger_uncertainty_branch.accuracy(), epoch * len(dataloader))
-    writer.add_figure("Uncertainty Threshold Curve", dual_prediction_logger.plot_accuracy_vs_threshold(), epoch * len(dataloader))
 
     print("\nEpoch {}, Train Accuracy: {}".format(epoch, accuracy_logger_main_branch.accuracy()))
     print("{0:20} {1:10}".format("Class", "Accuracy")) # header
@@ -174,6 +172,10 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         writer.add_scalar("Total Accuracy/test", test_accuracy.accuracy(), epoch * len(dataloader))
         for name, acc in test_accuracy.named_class_accuarcies().items():
             writer.add_scalar("Class Accuracies/test/{}".format(name), acc, epoch * len(dataloader))
+
+        print("Starting uncertainty evaluation.")
+        test_uncertainty_log = evaluate_uncertainty(model, cfg.test_annotations, cfg.test_imagedir)
+        writer.add_figure("Uncertainty Threshold Curve", test_uncertainty_log.plot_accuracy_vs_threshold(), epoch * len(dataloader))
 
         if (args.epochs - epoch) / args.test_frequency < 1: # last evaluation
             writer.add_hparams({"learning_rate": cfg.learning_rate, "num_decoder_layers": cfg.num_decoder_layers, "num_decoder_heads": cfg.num_decoder_heads, "uncertainty_threshold": cfg.uncertainty_threshold}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})

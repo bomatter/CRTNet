@@ -38,6 +38,7 @@ def evaluate_uncertainty(model, annotations_file, imagedir, savedir=None, outnam
     """
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model_state = model.extended_output # to set model back to this state after evaluation
     model.extended_output = True
     model.to(device)
 
@@ -58,6 +59,8 @@ def evaluate_uncertainty(model, annotations_file, imagedir, savedir=None, outnam
             _, predictions_uncertainty_branch = torch.max(output_uncertainty_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction
             _, predictions_main_branch = torch.max(output_main_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction
             log.update(predictions_uncertainty_branch, predictions_main_branch, uncertainty, labels_cpu, annotation_ids)
+
+    model.extended_output = model_state # set back to original state
 
     # save
     if savedir is not None:
