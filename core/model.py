@@ -7,12 +7,19 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_threshold=0, gpu_streams=True):
+    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_threshold=0, extended_output=False, gpu_streams=True):
         """
-        Arguments:
-            uncertainty_threshold: used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, additional computations are necessary.
-            gpu_streams: if set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding.
-        """
+        BigPictureNet Model
+
+        Args:
+            num_classes (int): Number of classes.
+            num_decoder_layers (int, optional): Defaults to 6.
+            num_decoder_heads (int, optional): Defaults to 8.
+            uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
+            extended_output (bool, optional): Can be enabled to return predictions from both branches and uncertainty value (as during training) when the model is in evaluation mode.
+            gpu_streams (bool, optional): If set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding. Defaults to True.
+        """        
+
         super(Model, self).__init__()
 
         self.NUM_CLASSES = num_classes
@@ -53,6 +60,8 @@ class Model(nn.Module):
         self.target_stream = torch.cuda.Stream(priority=-1) if self.gpu_streams else None # set target stream as high priority because context encoding may not be necessary due to uncertainty gating
         self.context_stream = torch.cuda.Stream() if self.gpu_streams else None
 
+        self.extended_output = extended_output
+
     def forward(self, context_images, target_images, target_bbox):
 
         # Encoding of both streams
@@ -67,7 +76,7 @@ class Model(nn.Module):
             
             # During inference, return prediction if prediction uncertainty is below the specified uncertainty threshold.
             # Note: The current implementation makes the gating decision on a per-batch basis. We expect/recommend that a batch size of 1 is used for inference.
-            if not self.training and torch.all(uncertainty < self.UNCERTAINTY_THRESHOLD).item():
+            if not self.training and not self.extended_output and torch.all(uncertainty < self.UNCERTAINTY_THRESHOLD).item():
                 return prediction
             
         with torch.cuda.stream(self.context_stream):
@@ -86,7 +95,7 @@ class Model(nn.Module):
         # Classification
         output = self.classifier(target_encoding.squeeze(0))
 
-        if self.training:
+        if self.training or self.extended_output:
             return prediction, output, uncertainty # return both predictions (from uncertainty gating branch and main branch) and uncertainty
         else:
             return output
@@ -108,6 +117,7 @@ class Model(nn.Module):
     def unfreeze_target_encoder(self):
         for param in self.target_encoder.parameters():
             param.requires_grad = True
+
 
 class Encoder(nn.Module):
 
