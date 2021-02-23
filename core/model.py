@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_threshold=0, extended_output=False, gpu_streams=True):
+    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_gate_type="entropy", uncertainty_threshold=0, extended_output=False, gpu_streams=True):
         """
         BigPictureNet Model
 
@@ -15,6 +15,7 @@ class Model(nn.Module):
             num_classes (int): Number of classes.
             num_decoder_layers (int, optional): Defaults to 6.
             num_decoder_heads (int, optional): Defaults to 8.
+            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance".
             uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
             extended_output (bool, optional): Can be enabled to return predictions from both branches and uncertainty value (as during training) when the model is in evaluation mode.
             gpu_streams (bool, optional): If set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding. Defaults to True.
@@ -33,10 +34,10 @@ class Model(nn.Module):
 
         assert(self.context_encoder.NUM_FEATURES == self.target_encoder.NUM_FEATURES), "Context and target encoder must extract the same number of features."
         
-        self.uncertainty_gate = UncertaintyGate(self.NUM_ENCODER_FEATURES, self.NUM_CLASSES)
-        
+        self.UNCERTAINTY_GATE_TYPE = uncertainty_gate_type
         self.UNCERTAINTY_THRESHOLD = uncertainty_threshold
-
+        self.uncertainty_gate = build_uncertainty_gate(self.NUM_ENCODER_FEATURES, self.NUM_CLASSES, self.UNCERTAINTY_GATE_TYPE)
+        
         self.tokenizer = Tokenizer()
 
         self.NUM_CONTEXT_TOKENS = self.tokenizer.NUM_CONTEXT_TOKENS
@@ -200,6 +201,21 @@ class PositionalEncoding(nn.Module):
                 nn.init.xavier_uniform_(p)
 
 
+def build_uncertainty_gate(num_encoder_features, num_classes, gate_type="entropy"):
+    if gate_type == "entropy":
+        return UncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "absolute_distance":
+        return AbsoluteDistanceUncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "absolute_softmax_distance":
+        return AbsoluteSoftmaxDistanceUncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "relative_distance":
+        return RelativeDistanceUncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "relative_softmax_distance":
+        return RelativeSoftmaxDistanceUncertaintyGate(num_encoder_features, num_classes)
+    else:
+        raise ValueError("Unsupported uncertainty gate type {}.".format(gate_type))
+
+
 class UncertaintyGate(nn.Module):
 
     def __init__(self, num_features, num_classes):
@@ -215,13 +231,54 @@ class UncertaintyGate(nn.Module):
         input_features = F.adaptive_avg_pool2d(input_features, (1, 1))
         input_features = torch.flatten(input_features, 1) # output dimension: (Batchsize, NUM_ENCODER_FEATURES)
         
-        predictions = self.target_classifier(input_features)
-        entropy = -1 * torch.sum(F.softmax(predictions.detach(), dim=1) * F.log_softmax(predictions.detach(), dim=1), dim=1) # entropy as metric for uncertainty
+        predictions = self.target_classifier(input_features) # predictions dimension: (Batchsize, NUM_CLASSES)
+        uncertainty = self.compute_uncertainty(predictions.detach())
+        
+        return predictions, uncertainty
 
-        return predictions, entropy
+    @staticmethod
+    def compute_uncertainty(predictions):
+        return -1 * torch.sum(F.softmax(predictions, dim=1) * F.log_softmax(predictions, dim=1), dim=1) # entropy as metric for uncertainty
 
     @torch.no_grad()
     def initialize_weights(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
+
+
+class AbsoluteDistanceUncertaintyGate(UncertaintyGate):
+
+    @staticmethod
+    def compute_uncertainty(predictions):
+        top2, _ = torch.topk(predictions, 2, dim=1)
+        uncertainty =  top2[:,0] - top2[:,1] # distance between largest and 2nd largest value
+        
+        return uncertainty
+
+class AbsoluteSoftmaxDistanceUncertaintyGate(UncertaintyGate):
+    
+    @staticmethod
+    def compute_uncertainty(predictions):
+        top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
+        uncertainty =  top2[:,0] - top2[:,1] # distance between largest and 2nd largest value
+        
+        return uncertainty
+    
+class RelativeDistanceUncertaintyGate(UncertaintyGate):
+    
+    @staticmethod
+    def compute_uncertainty(predictions):
+        top2, _ = torch.topk(predictions, 2, dim=1)
+        uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
+        
+        return uncertainty
+
+class RelativeSoftmaxDistanceUncertaintyGate(UncertaintyGate):
+    
+    @staticmethod
+    def compute_uncertainty(predictions):
+        top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
+        uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
+        
+        return uncertainty
