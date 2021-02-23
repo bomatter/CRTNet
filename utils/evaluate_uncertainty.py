@@ -108,10 +108,10 @@ if __name__ == "__main__":
     assert(cfg.test_annotations is not None), "Annotations need to be specified either via commandline argument (--annotations) or config (test_annotations)."
     assert(cfg.test_imagedir is not None), "Imagedir needs to be specified either via commandline argument (--imagedir) or config (test_imagedir)."
 
-    # infer number of classes
-    with open(cfg.annotations) as f:
-        NUM_CLASSES = len(json.load(f)["categories"])
-        print("Number of categories: {}".format(NUM_CLASSES))
+    if not hasattr(cfg, "num_classes"): # infer number of classes
+        with open(cfg.annotations) as f:
+            NUM_CLASSES = len(json.load(f)["categories"])
+        cfg.num_classes = NUM_CLASSES
 
     pathlib.Path(args.outdir).mkdir(exist_ok=True, parents=True)
     save_config(cfg, args.outdir)

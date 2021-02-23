@@ -47,16 +47,16 @@ args = parser.parse_args()
 # Create output directory
 pathlib.Path(args.outdir).mkdir(exist_ok=True, parents=True)
 
-# Load config or create a new one and save it to outdir for reproducibility
+# Load config or create a new one
 cfg = create_config(args)
-save_config(cfg, args.outdir)
-print(cfg)
 
 dataset = COCODataset(cfg.annotations, cfg.imagedir, image_size =(224,224), normalize_means=[0.485, 0.456, 0.406], normalize_stds=[0.229, 0.224, 0.225])
 dataloader = DataLoader(dataset, batch_size=cfg.batch_size, num_workers=4, shuffle=True, pin_memory=True, drop_last=True)
 
 NUM_CLASSES = dataset.NUM_CLASSES
-print("Number of categories: {}".format(NUM_CLASSES))
+cfg.num_classes = NUM_CLASSES
+save_config(cfg, args.outdir)
+print(cfg)
 
 model = Model(NUM_CLASSES, num_decoder_layers=cfg.num_decoder_layers, num_decoder_heads=cfg.num_decoder_heads, uncertainty_threshold=cfg.uncertainty_threshold)
 

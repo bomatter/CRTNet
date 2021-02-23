@@ -5,7 +5,7 @@ import subprocess
 from ml_collections import ConfigDict
 
 
-def create_config(args):
+def create_config(args, num_classes=None):
     """
     Returns a ConfigDict. If args.config_file is not specified, default values are used. Further fileds in args are used instead of defaults.
 
@@ -44,15 +44,8 @@ def create_config(args):
     elif not hasattr(cfg, "test_imagedir"):
         cfg.test_imagedir = None
 
-    if args.batch_size is not None:
-        cfg.batch_size = args.batch_size
-    elif not hasattr(cfg, "batch_size"):
-        cfg.batch_size = 16
-
-    if args.learning_rate is not None:
-        cfg.learning_rate = args.learning_rate
-    elif not hasattr(cfg, "learning_rate"):
-        cfg.learning_rate = 1e-5
+    if num_classes is not None:
+        cfg.num_classes = num_classes
 
     if args.num_decoder_layers is not None:
         cfg.num_decoder_layers = args.num_decoder_layers
@@ -68,6 +61,16 @@ def create_config(args):
         cfg.uncertainty_threshold = args.uncertainty_threshold
     elif not hasattr(cfg, "uncertainty_threshold"):
         cfg.uncertainty_threshold = 0.
+
+    if args.batch_size is not None:
+        cfg.batch_size = args.batch_size
+    elif not hasattr(cfg, "batch_size"):
+        cfg.batch_size = 16
+
+    if args.learning_rate is not None:
+        cfg.learning_rate = args.learning_rate
+    elif not hasattr(cfg, "learning_rate"):
+        cfg.learning_rate = 1e-5
 
     # add hash of last git commit to config if available
     try:
