@@ -1,13 +1,13 @@
 import os
 import json
-
+import numpy as np
 import torch
 
 from torch.utils.data import Dataset
 from torchvision.transforms.functional import to_tensor, normalize
 
 from PIL import Image
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 
 class COCODataset(Dataset):
     """
@@ -58,6 +58,20 @@ class COCODataset(Dataset):
                 self.id2idx[i["id"]] = label2idx[i["name"]]
         
         self.NUM_CLASSES = len(self.id2label)
+
+        # count annotations per class
+        self.annotation_counts = Counter([a["category_id"] for a in self.annotations])
+        self.annotation_counts = {self.id2idx[k]: v for k, v in self.annotation_counts.items()}
+        self.named_annotation_counts = {self.idx2label[k]: v for k, v in self.annotation_counts.items()}
+        self.relative_annotation_counts = np.array([self.annotation_counts[k] for k in sorted(self.annotation_counts.keys())])
+        self.relative_annotation_counts = self.relative_annotation_counts / np.sum(self.relative_annotation_counts)
+        self.relative_annotation_counts = torch.tensor(self.relative_annotation_counts, dtype=torch.float) # convert to tensor to simplify usage for reweighting
+        
+        print("-------------------------------\nAnnotation Counts\n-------------------------------")
+        for k, v in self.named_annotation_counts.items():
+            print("{0:20} {1:10}".format(k, v))
+        print("{0:20} {1:10}".format("Total", len(self.annotations)))
+        print("-------------------------------\n")
 
         if normalize_means is not None and normalize_stds is not None:
             self.normalize_means = normalize_means

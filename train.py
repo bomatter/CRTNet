@@ -64,7 +64,7 @@ model = Model.from_config(cfg)
 assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
 
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(weight=dataset.relative_annotation_counts)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
