@@ -63,6 +63,18 @@ class Model(nn.Module):
 
         self.extended_output = extended_output
 
+    @classmethod
+    def from_config(cls, cfg, num_classes=None, extended_output=False, gpu_streams=True):
+        """
+        Alternative initializer for the use with config files.
+        """
+        if num_classes is not None:
+            cfg.num_classes = num_classes
+        else:
+            assert(hasattr(cfg, "num_classes")), "Number of classes needs to be specified via cfg or function argument."
+
+        return cls(cfg.num_classes, cfg.num_decoder_layers, cfg.num_decoder_heads, cfg.uncertainty_gate_type, cfg.uncertainty_threshold, extended_output, gpu_streams)
+
     def forward(self, context_images, target_images, target_bbox):
 
         # Encoding of both streams

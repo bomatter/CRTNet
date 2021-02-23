@@ -57,6 +57,11 @@ def create_config(args, num_classes=None):
     elif not hasattr(cfg, "num_decoder_heads"):
         cfg.num_decoder_heads = 8
 
+    if args.uncertainty_gate_type is not None:
+        cfg.uncertainty_gate_type = args.uncertainty_gate_type
+    elif not hasattr(cfg, "uncertainty_gate_type"):
+        cfg.uncertainty_gate_type = "entropy"
+
     if args.uncertainty_threshold is not None:
         cfg.uncertainty_threshold = args.uncertainty_threshold
     elif not hasattr(cfg, "uncertainty_threshold"):

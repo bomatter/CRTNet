@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
     print("Initializing model from checkpoint {}".format(args.checkpoint))
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
-    model = Model(NUM_CLASSES, num_decoder_layers=cfg.num_decoder_layers, num_decoder_heads=cfg.num_decoder_heads, uncertainty_threshold=0.)
+    model = Model.from_config(cfg, extended_output=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
 
