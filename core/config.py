@@ -77,6 +77,11 @@ def create_config(args, num_classes=None):
     elif not hasattr(cfg, "learning_rate"):
         cfg.learning_rate = 1e-5
 
+    if args.imbalance_reweighting is not None:
+        cfg.imbalance_reweighting = args.imbalance_reweighting
+    elif not hasattr(cfg, "imbalance_reweighting"):
+        cfg.imbalance_reweighting = False
+
     # add hash of last git commit to config if available
     try:
         cfg.git = subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()
