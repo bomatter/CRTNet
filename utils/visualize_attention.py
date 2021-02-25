@@ -110,7 +110,7 @@ if __name__ == "__main__":
     assert(cfg.test_imagedir is not None), "Imagedir needs to be specified either via commandline argument (--imagedir) or config (test_imagedir)."
 
     if not hasattr(cfg, "num_classes"): # infer number of classes
-        with open(cfg.annotations) as f:
+        with open(cfg.test_annotations) as f:
             NUM_CLASSES = len(json.load(f)["categories"])
         cfg.num_classes = NUM_CLASSES
 
