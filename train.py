@@ -69,7 +69,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
 
 if cfg.imbalance_reweighting:
-    criterion = nn.CrossEntropyLoss(weight=dataset.relative_annotation_counts.to(device))
+    class_weights = torch.true_divide(dataset.relative_annotation_counts.max(), dataset.relative_annotation_counts)
+    criterion = nn.CrossEntropyLoss(weight= class_weights.to(device))
 else:
     criterion = nn.CrossEntropyLoss()
 
