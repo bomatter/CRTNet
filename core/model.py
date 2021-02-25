@@ -15,7 +15,7 @@ class Model(nn.Module):
             num_classes (int): Number of classes.
             num_decoder_layers (int, optional): Defaults to 6.
             num_decoder_heads (int, optional): Defaults to 8.
-            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance".
+            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance", "learned", "learned_metric".
             uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
             extended_output (bool, optional): Can be enabled to return predictions from both branches, uncertainty value and attention maps.
             gpu_streams (bool, optional): If set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding. Defaults to True.
@@ -85,7 +85,7 @@ class Model(nn.Module):
             target_encoding = self.target_encoder(target_images)
             
             # Uncertainty gating for target
-            prediction, uncertainty = self.uncertainty_gate(target_encoding) # predictions and associated confidence metrics
+            prediction, uncertainty = self.uncertainty_gate(target_encoding.detach()) # Predictions and associated confidence metrics. Detach because encoder is trained via main branch only.
             
             # During inference, return prediction if prediction uncertainty is below the specified uncertainty threshold.
             # Note: The current implementation makes the gating decision on a per-batch basis. We expect/recommend that a batch size of 1 is used for inference.
@@ -107,6 +107,9 @@ class Model(nn.Module):
 
         # Classification
         output = self.classifier(target_encoding.squeeze(0))
+
+        if self.UNCERTAINTY_GATE_TYPE == "learned" or self.UNCERTAINTY_GATE_TYPE == "learned_metric":
+            prediction = uncertainty * output.detach() + (1-uncertainty) * prediction
 
         if self.extended_output:
             return prediction, output, uncertainty, attention_map
@@ -226,6 +229,10 @@ def build_uncertainty_gate(num_encoder_features, num_classes, gate_type="entropy
         return RelativeDistanceUncertaintyGate(num_encoder_features, num_classes)
     elif gate_type == "relative_softmax_distance":
         return RelativeSoftmaxDistanceUncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "learned":
+        return LearnedUncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "learned_metric":
+        return LearnedMetricUncertaintyGate(num_encoder_features, num_classes)
     else:
         raise ValueError("Unsupported uncertainty gate type {}.".format(gate_type))
 
@@ -259,7 +266,6 @@ class UncertaintyGate(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-
 
 class AbsoluteDistanceUncertaintyGate(UncertaintyGate):
 
@@ -296,6 +302,39 @@ class RelativeSoftmaxDistanceUncertaintyGate(UncertaintyGate):
         uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
         
         return uncertainty
+
+class LearnedUncertaintyGate(UncertaintyGate):
+
+    def __init__(self, num_features, num_classes):
+        super(LearnedUncertaintyGate, self).__init__(num_features, num_classes)
+        self.uncertainty_estimator = nn.Linear(num_features, 1)
+        self.initialize_weights()
+
+    def forward(self, input_features):        
+        # TODO: could add a few layers here
+        
+        # flatten featuremap out
+        input_features = F.relu(input_features)
+        input_features = F.adaptive_avg_pool2d(input_features, (1, 1))
+        input_features = torch.flatten(input_features, 1) # output dimension: (Batchsize, NUM_ENCODER_FEATURES)
+        
+        predictions = self.target_classifier(input_features) # predictions dimension: (Batchsize, NUM_CLASSES)
+        uncertainty = self.compute_uncertainty(input_features)
+        
+        return predictions, uncertainty
+
+    def compute_uncertainty(self, input_features):
+        return torch.sigmoid(self.uncertainty_estimator(input_features))
+
+class LearnedMetricUncertaintyGate(UncertaintyGate):
+
+    def __init__(self, num_features, num_classes):
+        super(LearnedMetricUncertaintyGate, self).__init__(num_features, num_classes)
+        self.uncertainty_estimator = nn.Linear(num_classes, 1)
+        self.initialize_weights()
+
+    def compute_uncertainty(self, predictions):
+        return torch.sigmoid(self.uncertainty_estimator(predictions))
 
 
 class TransformerDecoderLayerWithMap(torch.nn.TransformerDecoderLayer):
