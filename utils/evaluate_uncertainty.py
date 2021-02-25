@@ -1,5 +1,3 @@
-# Note: execute this script from the parent directory (python utils/evaluate_uncertainty.py)
-
 import os
 import sys
 import argparse
@@ -15,7 +13,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from ml_collections import ConfigDict
 
-sys.path.append(".")
+sys.path.append(".") # to enable execution from parent directory
+sys.path.append("..") # to enable execution from utils folder
+
 from core.dataset import COCODatasetWithID
 from core.config import save_config
 from core.model import Model
@@ -54,7 +54,7 @@ def evaluate_uncertainty(model, annotations_file, imagedir, savedir=None, outnam
             target_images = target_images.to(device)
             bbox = bbox.to(device)
 
-            output_uncertainty_branch , output_main_branch, uncertainty = model(context_images, target_images, bbox)
+            output_uncertainty_branch , output_main_branch, uncertainty, _ = model(context_images, target_images, bbox)
             
             _, predictions_uncertainty_branch = torch.max(output_uncertainty_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction
             _, predictions_main_branch = torch.max(output_main_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction

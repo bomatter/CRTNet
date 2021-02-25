@@ -17,7 +17,7 @@ class Model(nn.Module):
             num_decoder_heads (int, optional): Defaults to 8.
             uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance".
             uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
-            extended_output (bool, optional): Can be enabled to return predictions from both branches and uncertainty value (as during training) when the model is in evaluation mode.
+            extended_output (bool, optional): Can be enabled to return predictions from both branches, uncertainty value and attention maps.
             gpu_streams (bool, optional): If set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding. Defaults to True.
         """        
 
@@ -49,8 +49,8 @@ class Model(nn.Module):
 
         self.positional_encoding = PositionalEncoding(self.NUM_CONTEXT_TOKENS, self.NUM_TOKEN_FEATURES)
 
-        self.decoder_layers = nn.TransformerDecoderLayer(self.NUM_TOKEN_FEATURES, nhead=self.NUM_DECODER_HEADS)
-        self.decoder = nn.TransformerDecoder(self.decoder_layers, self.NUM_DECODER_LAYERS)
+        self.decoder_layers = TransformerDecoderLayerWithMap(self.NUM_TOKEN_FEATURES, nhead=self.NUM_DECODER_HEADS)
+        self.decoder = TransformerDecoderWithMap(self.decoder_layers, self.NUM_DECODER_LAYERS)
  
         self.classifier = nn.Linear(self.NUM_TOKEN_FEATURES, self.NUM_CLASSES)
 
@@ -103,12 +103,14 @@ class Model(nn.Module):
         context_encoding, target_encoding = self.positional_encoding(context_encoding, target_encoding, target_bbox)
 
         # Incorporation of context information using transformer decoder
-        target_encoding = self.decoder(target_encoding, context_encoding)
+        target_encoding, attention_map = self.decoder(target_encoding, context_encoding)
 
         # Classification
         output = self.classifier(target_encoding.squeeze(0))
 
-        if self.training or self.extended_output:
+        if self.extended_output:
+            return prediction, output, uncertainty, attention_map
+        elif self.training:
             return prediction, output, uncertainty # return both predictions (from uncertainty gating branch and main branch) and uncertainty
         else:
             return output
@@ -294,3 +296,62 @@ class RelativeSoftmaxDistanceUncertaintyGate(UncertaintyGate):
         uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
         
         return uncertainty
+
+
+class TransformerDecoderLayerWithMap(torch.nn.TransformerDecoderLayer):
+    """
+    Provides the same functionality as torch.nn.TransformerDecoderLayer but returns the attention map in addition.
+    """
+
+    def forward(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None):
+        """
+        Pass the inputs (and mask) through the decoder layer.
+
+        Args:
+            tgt: the sequence to the decoder layer (required).
+            memory: the sequence from the last layer of the encoder (required).
+            tgt_mask: the mask for the tgt sequence (optional).
+            memory_mask: the mask for the memory sequence (optional).
+            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
+            memory_key_padding_mask: the mask for the memory keys per batch (optional).
+        """
+        tgt2 = self.self_attn(tgt, tgt, tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask)[0]
+        tgt = tgt + self.dropout1(tgt2)
+        tgt = self.norm1(tgt)
+        tgt2, attention_map = self.multihead_attn(tgt, memory, memory, attn_mask=memory_mask, key_padding_mask=memory_key_padding_mask)
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout3(tgt2)
+        tgt = self.norm3(tgt)
+        return tgt, attention_map
+
+
+class TransformerDecoderWithMap(torch.nn.TransformerDecoder):
+    """
+    Provides the same functionality as torch.nn.TransformerDecoderLayer but returns the attention maps in addition.
+    """
+
+    def forward(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None):
+        """
+        Pass the inputs (and mask) through the decoder layer in turn.
+
+        Args:
+            tgt: the sequence to the decoder (required).
+            memory: the sequence from the last layer of the encoder (required).
+            tgt_mask: the mask for the tgt sequence (optional).
+            memory_mask: the mask for the memory sequence (optional).
+            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
+            memory_key_padding_mask: the mask for the memory keys per batch (optional).
+        """
+        output = tgt
+        attention_maps = []
+
+        for mod in self.layers:
+            output, attention_map = mod(output, memory, tgt_mask=tgt_mask, memory_mask=memory_mask, tgt_key_padding_mask=tgt_key_padding_mask, memory_key_padding_mask=memory_key_padding_mask)
+            attention_maps.append(attention_map)
+
+        if self.norm is not None:
+            output = self.norm(output)
+
+        return output, torch.stack(attention_maps).permute(1,0,2,3) # attention map shape: (batchsize, num_decoder_layers, num_target_tokens, num_context_tokens)
