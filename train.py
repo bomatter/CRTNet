@@ -119,11 +119,9 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         # backpropagation through both branches
         optimizer.zero_grad(set_to_none=True)
 
-        model.freeze_target_encoder() # freeze target encoder such that gradients are only computed for uncertainty branch
         loss_uncertainty_branch = criterion(output_uncertainty_branch, labels)
         loss_uncertainty_branch.backward(retain_graph=True)
 
-        model.unfreeze_target_encoder() # unfreeze target encoder such that it can be trained with the main branch
         loss_main_branch = criterion(output_main_branch, labels)
         loss_main_branch.backward()
 
