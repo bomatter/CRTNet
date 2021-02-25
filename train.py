@@ -39,6 +39,7 @@ parser.add_argument("--print_batch_metrics", action='store_true', default=False,
 
 parser.add_argument("--batch_size", type=int, help="Batchsize to use for training.")
 parser.add_argument("--learning_rate", type=float, help="Learning rate to use for training.")
+parser.add_argument("--imbalance_reweighting", action='store_true', help="Reweight samples in proportion to the number of samples per class.")
 parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
 parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
 parser.add_argument("--uncertainty_gate_type", type=str, help="Uncertainty gating mechanism to use. Can be one of: 'entropy', 'absolute_distance', 'absolute_softmax_distance', 'relative_distance', 'relative_softmax_distance'.")
@@ -63,10 +64,15 @@ model = Model.from_config(cfg)
 
 assert(model.TARGET_IMAGE_SIZE == model.CONTEXT_IMAGE_SIZE == dataset.image_size), "Image size from the dataset is not compatible with the encoder."
 
-optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
-criterion = nn.CrossEntropyLoss(weight=dataset.relative_annotation_counts)
-
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
+
+if cfg.imbalance_reweighting:
+    class_weights = torch.true_divide(dataset.relative_annotation_counts.max(), dataset.relative_annotation_counts)
+    criterion = nn.CrossEntropyLoss(weight= class_weights.to(device))
+else:
+    criterion = nn.CrossEntropyLoss()
 
 if cfg.checkpoint is not None:
     print("Initializing from checkpoint {}".format(cfg.checkpoint))
@@ -180,6 +186,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
 
         if (args.epochs - epoch) / args.test_frequency < 1: # last evaluation
             writer.add_hparams({"learning_rate": cfg.learning_rate, "num_decoder_layers": cfg.num_decoder_layers, "num_decoder_heads": cfg.num_decoder_heads,
-                                "uncertainty_gate_type": cfg.uncertainty_gate_type, "uncertainty_threshold": cfg.uncertainty_threshold}, metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
+                                "uncertainty_gate_type": cfg.uncertainty_gate_type, "uncertainty_threshold": cfg.uncertainty_threshold, "imbalance_reweighting": str(cfg.imbalance_reweighting)},
+                                metric_dict={"hparam/accuracy": test_accuracy.accuracy()})
         
 writer.close()
