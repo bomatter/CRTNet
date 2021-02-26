@@ -307,7 +307,10 @@ class LearnedUncertaintyGate(UncertaintyGate):
 
     def __init__(self, num_features, num_classes):
         super(LearnedUncertaintyGate, self).__init__(num_features, num_classes)
-        self.uncertainty_estimator = nn.Linear(num_features, 1)
+        self.uncertainty_estimator = nn.Sequential(nn.Linear(num_features, num_features // 2),
+                                                   nn.ReLU(),
+                                                   nn.Linear(num_features // 2, 1),
+                                                   nn.Sigmoid())
         self.initialize_weights()
 
     def forward(self, input_features):        
@@ -319,22 +322,22 @@ class LearnedUncertaintyGate(UncertaintyGate):
         input_features = torch.flatten(input_features, 1) # output dimension: (Batchsize, NUM_ENCODER_FEATURES)
         
         predictions = self.target_classifier(input_features) # predictions dimension: (Batchsize, NUM_CLASSES)
-        uncertainty = self.compute_uncertainty(input_features)
+        uncertainty = self.uncertainty_estimator(input_features)
         
         return predictions, uncertainty
-
-    def compute_uncertainty(self, input_features):
-        return torch.sigmoid(self.uncertainty_estimator(input_features))
 
 class LearnedMetricUncertaintyGate(UncertaintyGate):
 
     def __init__(self, num_features, num_classes):
         super(LearnedMetricUncertaintyGate, self).__init__(num_features, num_classes)
-        self.uncertainty_estimator = nn.Linear(num_classes, 1)
+        self.uncertainty_estimator = nn.Sequential(nn.Linear(num_classes, num_classes // 2),
+                                                   nn.ReLU(),
+                                                   nn.Linear(num_classes // 2, 1),
+                                                   nn.Sigmoid())
         self.initialize_weights()
 
     def compute_uncertainty(self, predictions):
-        return torch.sigmoid(self.uncertainty_estimator(predictions))
+        return self.uncertainty_estimator(predictions)
 
 
 class TransformerDecoderLayerWithMap(torch.nn.TransformerDecoderLayer):
