@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_gate_type="entropy", uncertainty_threshold=0, extended_output=False, gpu_streams=True):
+    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_gate_type="entropy", uncertainty_threshold=0, weighted_prediction=False, extended_output=False, gpu_streams=True):
         """
         BigPictureNet Model
 
@@ -17,7 +17,8 @@ class Model(nn.Module):
             num_decoder_heads (int, optional): Defaults to 8.
             uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance", "learned", "learned_metric".
             uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
-            extended_output (bool, optional): Can be enabled to return predictions from both branches, uncertainty value and attention maps.
+            weighted_prediction (bool, optional): If enabled, the model returns an uncertainty-weighted prediction if the uncertainty_gate prediction exceeds the uncertainty threshold.
+            extended_output (bool, optional): Can be enabled to return predictions from both branches, uncertainty value and attention maps when the model is in eval mode.
             gpu_streams (bool, optional): If set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding. Defaults to True.
         """        
 
@@ -36,8 +37,9 @@ class Model(nn.Module):
         
         self.UNCERTAINTY_GATE_TYPE = uncertainty_gate_type
         self.UNCERTAINTY_THRESHOLD = uncertainty_threshold
+        self.weighted_prediction = weighted_prediction
         self.uncertainty_gate = build_uncertainty_gate(self.NUM_ENCODER_FEATURES, self.NUM_CLASSES, self.UNCERTAINTY_GATE_TYPE)
-        
+
         self.tokenizer = Tokenizer()
 
         self.NUM_CONTEXT_TOKENS = self.tokenizer.NUM_CONTEXT_TOKENS
@@ -73,7 +75,8 @@ class Model(nn.Module):
         else:
             assert(hasattr(cfg, "num_classes")), "Number of classes needs to be specified via cfg or function argument."
 
-        return cls(cfg.num_classes, cfg.num_decoder_layers, cfg.num_decoder_heads, cfg.uncertainty_gate_type, cfg.uncertainty_threshold, extended_output, gpu_streams)
+        return cls(num_classes=cfg.num_classes, num_decoder_layers=cfg.num_decoder_layers, num_decoder_heads=cfg.num_decoder_heads, uncertainty_gate_type=cfg.uncertainty_gate_type,
+                   uncertainty_threshold=cfg.uncertainty_threshold, weighted_prediction=cfg.weighted_prediction, extended_output=extended_output, gpu_streams=gpu_streams)
 
     def forward(self, context_images, target_images, target_bbox):
 
@@ -85,12 +88,12 @@ class Model(nn.Module):
             target_encoding = self.target_encoder(target_images)
             
             # Uncertainty gating for target
-            prediction, uncertainty = self.uncertainty_gate(target_encoding.detach()) # Predictions and associated confidence metrics. Detach because encoder is trained via main branch only.
+            uncertainty_gate_prediction, uncertainty = self.uncertainty_gate(target_encoding.detach()) # Predictions and associated confidence metrics. Detach because encoder is trained via main branch only.
             
-            # During inference, return prediction if prediction uncertainty is below the specified uncertainty threshold.
+            # During inference, return uncertainty_gate_prediction if uncertainty is below the specified uncertainty threshold.
             # Note: The current implementation makes the gating decision on a per-batch basis. We expect/recommend that a batch size of 1 is used for inference.
             if not self.training and not self.extended_output and torch.all(uncertainty < self.UNCERTAINTY_THRESHOLD).item():
-                return prediction
+                return uncertainty_gate_prediction
             
         with torch.cuda.stream(self.context_stream):
             context_encoding = self.context_encoder(context_images)
@@ -106,17 +109,22 @@ class Model(nn.Module):
         target_encoding, attention_map = self.decoder(target_encoding, context_encoding)
 
         # Classification
-        output = self.classifier(target_encoding.squeeze(0))
+        main_prediction = self.classifier(target_encoding.squeeze(0))
+        weighted_prediction = uncertainty * main_prediction.detach() + (1-uncertainty) * uncertainty_gate_prediction # detached from main branch
 
-        if self.UNCERTAINTY_GATE_TYPE == "learned" or self.UNCERTAINTY_GATE_TYPE == "learned_metric":
-            prediction = uncertainty * output.detach() + (1-uncertainty) * prediction
+        if self.weighted_prediction:
+            main_prediction = uncertainty.detach() * main_prediction + (1-uncertainty.detach()) * uncertainty_gate_prediction.detach() # detached from uncertainty branch
 
-        if self.extended_output:
-            return prediction, output, uncertainty, attention_map
-        elif self.training:
-            return prediction, output, uncertainty # return both predictions (from uncertainty gating branch and main branch) and uncertainty
+        # Return accoring to model state
+        if self.training:
+            if self.UNCERTAINTY_GATE_TYPE == "learned" or self.UNCERTAINTY_GATE_TYPE == "learned_metric" or self.weighted_prediction: # require weighted predictions for training
+                return weighted_prediction, main_prediction, uncertainty
+            else:
+                return uncertainty_gate_prediction, main_prediction, uncertainty
+        elif self.extended_output:
+            return uncertainty_gate_prediction, main_prediction, uncertainty, attention_map
         else:
-            return output
+            return main_prediction
 
     @torch.no_grad()
     def initialize_weights(self):
@@ -259,7 +267,7 @@ class UncertaintyGate(nn.Module):
 
     @staticmethod
     def compute_uncertainty(predictions):
-        return -1 * torch.sum(F.softmax(predictions, dim=1) * F.log_softmax(predictions, dim=1), dim=1) # entropy as metric for uncertainty
+        return -1 * torch.sum(F.softmax(predictions, dim=1) * F.log_softmax(predictions, dim=1), dim=1, keepdim=True) # entropy as metric for uncertainty
 
     @torch.no_grad()
     def initialize_weights(self):
@@ -272,7 +280,7 @@ class AbsoluteDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(predictions, 2, dim=1)
-        uncertainty =  top2[:,0] - top2[:,1] # distance between largest and 2nd largest value
+        uncertainty =  (top2[:,0] - top2[:,1]).unsqueeze(dim=1) # distance between largest and 2nd largest value
         
         return uncertainty
 
@@ -281,7 +289,7 @@ class AbsoluteSoftmaxDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
-        uncertainty =  top2[:,0] - top2[:,1] # distance between largest and 2nd largest value
+        uncertainty =  (top2[:,0] - top2[:,1]).unsqueeze(dim=1) # distance between largest and 2nd largest value
         
         return uncertainty
     
@@ -290,7 +298,7 @@ class RelativeDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(predictions, 2, dim=1)
-        uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
+        uncertainty =  (torch.true_divide(top2[:,0] - top2[:,1], top2[:,1])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
         
         return uncertainty
 
@@ -299,7 +307,7 @@ class RelativeSoftmaxDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
-        uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
+        uncertainty =  (torch.true_divide(top2[:,0] - top2[:,1], top2[:,1])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
         
         return uncertainty
 

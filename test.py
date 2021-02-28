@@ -89,8 +89,11 @@ if __name__ == "__main__":
     parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
     parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
     parser.add_argument("--uncertainty_threshold", type=float, help="Uncertainty threshold for the uncertainty gating module.")
-    
-    parser.add_argument('--record_individual_scores', action='store_true', default=False, help="If set, will log for each individual annotion how it was predicted and if the prediction was correct")
+    parser.add_argument("--weighted_prediction", action='store_true', dest='weighted_prediction', help="If set, the model outputs a weighted prediction if the uncertainty gate prediction exceeds the uncertainty threshold.")
+    parser.add_argument("--unweighted_prediction", action='store_false', dest='weighted_prediction', help="If set, the model outputs unweighted predictions.")    
+    parser.set_defaults(weighted_prediction=None)
+
+    parser.add_argument("--record_individual_scores", action='store_true', default=False, help="If set, will log for each individual annotion how it was predicted and if the prediction was correct")
     parser.add_argument("--print_batch_metrics", action='store_true', default=False, help="Set to print metrics for every batch.")
     args = parser.parse_args()
 
@@ -108,6 +111,8 @@ if __name__ == "__main__":
         cfg.test_imagedir = args.imagedir
     if args.uncertainty_threshold is not None:
         cfg.uncertainty_threshold = args.uncertainty_threshold
+    if args.weighted_prediction is not None:
+        cfg.weighted_prediction = args.weighted_prediction
 
     assert(cfg.test_annotations is not None), "Annotations need to be specified either via commandline argument (--annotations) or config (test_annotations)."
     assert(cfg.test_imagedir is not None), "Imagedir needs to be specified either via commandline argument (--imagedir) or config (test_imagedir)."
