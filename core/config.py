@@ -67,6 +67,11 @@ def create_config(args, num_classes=None):
     elif not hasattr(cfg, "uncertainty_threshold"):
         cfg.uncertainty_threshold = 0.
 
+    if args.weighted_prediction is not None:
+        cfg.weighted_prediction = args.weighted_prediction
+    elif not hasattr(cfg, "weighted_prediction"):
+        cfg.weighted_prediction = False
+
     if args.batch_size is not None:
         cfg.batch_size = args.batch_size
     elif not hasattr(cfg, "batch_size"):
