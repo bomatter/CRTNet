@@ -89,6 +89,10 @@ if __name__ == "__main__":
     parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
     parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
     
+    parser.add_argument("--weighted_prediction", action='store_true', dest='weighted_prediction', help="If set, the model outputs a weighted prediction if the uncertainty gate prediction exceeds the uncertainty threshold.")
+    parser.add_argument("--unweighted_prediction", action='store_false', dest='weighted_prediction', help="If set, the model outputs unweighted predictions.")    
+    parser.set_defaults(weighted_prediction=None)
+
     parser.add_argument("--save_plot", action='store_true', default=False, help="Set to save plot of accuracies at different uncertainty thresholds.")
     args = parser.parse_args()
 
@@ -104,6 +108,8 @@ if __name__ == "__main__":
         cfg.test_annotations = args.annotations
     if args.imagedir is not None:
         cfg.test_imagedir = args.imagedir
+    if args.weighted_prediction is not None:
+        cfg.weighted_prediction = args.weighted_prediction
 
     assert(cfg.test_annotations is not None), "Annotations need to be specified either via commandline argument (--annotations) or config (test_annotations)."
     assert(cfg.test_imagedir is not None), "Imagedir needs to be specified either via commandline argument (--imagedir) or config (test_imagedir)."
