@@ -1,5 +1,3 @@
-# Note: execute this script from the parent directory (python utils/evaluate_uncertainty.py)
-
 import os
 import sys
 import argparse
@@ -15,7 +13,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from ml_collections import ConfigDict
 
-sys.path.append(".")
+sys.path.append(".") # to enable execution from parent directory
+sys.path.append("..") # to enable execution from utils folder
+
 from core.dataset import COCODatasetWithID
 from core.config import save_config
 from core.model import Model
@@ -54,7 +54,7 @@ def evaluate_uncertainty(model, annotations_file, imagedir, savedir=None, outnam
             target_images = target_images.to(device)
             bbox = bbox.to(device)
 
-            output_uncertainty_branch , output_main_branch, uncertainty = model(context_images, target_images, bbox)
+            output_uncertainty_branch , output_main_branch, uncertainty, _ = model(context_images, target_images, bbox)
             
             _, predictions_uncertainty_branch = torch.max(output_uncertainty_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction
             _, predictions_main_branch = torch.max(output_main_branch.detach().to("cpu"), 1) # choose idx with maximum score as prediction
@@ -89,6 +89,10 @@ if __name__ == "__main__":
     parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
     parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
     
+    parser.add_argument("--weighted_prediction", action='store_true', dest='weighted_prediction', help="If set, the model outputs a weighted prediction if the uncertainty gate prediction exceeds the uncertainty threshold.")
+    parser.add_argument("--unweighted_prediction", action='store_false', dest='weighted_prediction', help="If set, the model outputs unweighted predictions.")    
+    parser.set_defaults(weighted_prediction=None)
+
     parser.add_argument("--save_plot", action='store_true', default=False, help="Set to save plot of accuracies at different uncertainty thresholds.")
     args = parser.parse_args()
 
@@ -104,6 +108,8 @@ if __name__ == "__main__":
         cfg.test_annotations = args.annotations
     if args.imagedir is not None:
         cfg.test_imagedir = args.imagedir
+    if args.weighted_prediction is not None:
+        cfg.weighted_prediction = args.weighted_prediction
 
     assert(cfg.test_annotations is not None), "Annotations need to be specified either via commandline argument (--annotations) or config (test_annotations)."
     assert(cfg.test_imagedir is not None), "Imagedir needs to be specified either via commandline argument (--imagedir) or config (test_imagedir)."

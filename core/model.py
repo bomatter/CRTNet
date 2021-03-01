@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class Model(nn.Module):
 
-    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_gate_type="entropy", uncertainty_threshold=0, extended_output=False, gpu_streams=True):
+    def __init__(self, num_classes, num_decoder_layers=6, num_decoder_heads=8, uncertainty_gate_type="entropy", uncertainty_threshold=0, weighted_prediction=False, extended_output=False, gpu_streams=True):
         """
         BigPictureNet Model
 
@@ -15,9 +15,10 @@ class Model(nn.Module):
             num_classes (int): Number of classes.
             num_decoder_layers (int, optional): Defaults to 6.
             num_decoder_heads (int, optional): Defaults to 8.
-            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance".
+            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance", "learned", "learned_metric".
             uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
-            extended_output (bool, optional): Can be enabled to return predictions from both branches and uncertainty value (as during training) when the model is in evaluation mode.
+            weighted_prediction (bool, optional): If enabled, the model returns an uncertainty-weighted prediction if the uncertainty_gate prediction exceeds the uncertainty threshold.
+            extended_output (bool, optional): Can be enabled to return predictions from both branches, uncertainty value and attention maps when the model is in eval mode.
             gpu_streams (bool, optional): If set to True and GPUs are available, multiple gpu streams may be used to parallelize encoding. Defaults to True.
         """        
 
@@ -36,8 +37,9 @@ class Model(nn.Module):
         
         self.UNCERTAINTY_GATE_TYPE = uncertainty_gate_type
         self.UNCERTAINTY_THRESHOLD = uncertainty_threshold
+        self.weighted_prediction = weighted_prediction
         self.uncertainty_gate = build_uncertainty_gate(self.NUM_ENCODER_FEATURES, self.NUM_CLASSES, self.UNCERTAINTY_GATE_TYPE)
-        
+
         self.tokenizer = Tokenizer()
 
         self.NUM_CONTEXT_TOKENS = self.tokenizer.NUM_CONTEXT_TOKENS
@@ -49,8 +51,8 @@ class Model(nn.Module):
 
         self.positional_encoding = PositionalEncoding(self.NUM_CONTEXT_TOKENS, self.NUM_TOKEN_FEATURES)
 
-        self.decoder_layers = nn.TransformerDecoderLayer(self.NUM_TOKEN_FEATURES, nhead=self.NUM_DECODER_HEADS)
-        self.decoder = nn.TransformerDecoder(self.decoder_layers, self.NUM_DECODER_LAYERS)
+        self.decoder_layers = TransformerDecoderLayerWithMap(self.NUM_TOKEN_FEATURES, nhead=self.NUM_DECODER_HEADS)
+        self.decoder = TransformerDecoderWithMap(self.decoder_layers, self.NUM_DECODER_LAYERS)
  
         self.classifier = nn.Linear(self.NUM_TOKEN_FEATURES, self.NUM_CLASSES)
 
@@ -73,7 +75,8 @@ class Model(nn.Module):
         else:
             assert(hasattr(cfg, "num_classes")), "Number of classes needs to be specified via cfg or function argument."
 
-        return cls(cfg.num_classes, cfg.num_decoder_layers, cfg.num_decoder_heads, cfg.uncertainty_gate_type, cfg.uncertainty_threshold, extended_output, gpu_streams)
+        return cls(num_classes=cfg.num_classes, num_decoder_layers=cfg.num_decoder_layers, num_decoder_heads=cfg.num_decoder_heads, uncertainty_gate_type=cfg.uncertainty_gate_type,
+                   uncertainty_threshold=cfg.uncertainty_threshold, weighted_prediction=cfg.weighted_prediction, extended_output=extended_output, gpu_streams=gpu_streams)
 
     def forward(self, context_images, target_images, target_bbox):
 
@@ -85,12 +88,12 @@ class Model(nn.Module):
             target_encoding = self.target_encoder(target_images)
             
             # Uncertainty gating for target
-            prediction, uncertainty = self.uncertainty_gate(target_encoding) # predictions and associated confidence metrics
+            uncertainty_gate_prediction, uncertainty = self.uncertainty_gate(target_encoding.detach()) # Predictions and associated confidence metrics. Detach because encoder is trained via main branch only.
             
-            # During inference, return prediction if prediction uncertainty is below the specified uncertainty threshold.
+            # During inference, return uncertainty_gate_prediction if uncertainty is below the specified uncertainty threshold.
             # Note: The current implementation makes the gating decision on a per-batch basis. We expect/recommend that a batch size of 1 is used for inference.
             if not self.training and not self.extended_output and torch.all(uncertainty < self.UNCERTAINTY_THRESHOLD).item():
-                return prediction
+                return uncertainty_gate_prediction
             
         with torch.cuda.stream(self.context_stream):
             context_encoding = self.context_encoder(context_images)
@@ -103,15 +106,25 @@ class Model(nn.Module):
         context_encoding, target_encoding = self.positional_encoding(context_encoding, target_encoding, target_bbox)
 
         # Incorporation of context information using transformer decoder
-        target_encoding = self.decoder(target_encoding, context_encoding)
+        target_encoding, attention_map = self.decoder(target_encoding, context_encoding)
 
         # Classification
-        output = self.classifier(target_encoding.squeeze(0))
+        main_prediction = self.classifier(target_encoding.squeeze(0))
+        weighted_prediction = uncertainty * main_prediction.detach() + (1-uncertainty) * uncertainty_gate_prediction # detached from main branch
 
-        if self.training or self.extended_output:
-            return prediction, output, uncertainty # return both predictions (from uncertainty gating branch and main branch) and uncertainty
+        if self.weighted_prediction:
+            main_prediction = uncertainty.detach() * main_prediction + (1-uncertainty.detach()) * uncertainty_gate_prediction.detach() # detached from uncertainty branch
+
+        # Return accoring to model state
+        if self.training:
+            if self.UNCERTAINTY_GATE_TYPE == "learned" or self.UNCERTAINTY_GATE_TYPE == "learned_metric" or self.weighted_prediction: # require weighted predictions for training
+                return weighted_prediction, main_prediction, uncertainty
+            else:
+                return uncertainty_gate_prediction, main_prediction, uncertainty
+        elif self.extended_output:
+            return uncertainty_gate_prediction, main_prediction, uncertainty, attention_map
         else:
-            return output
+            return main_prediction
 
     @torch.no_grad()
     def initialize_weights(self):
@@ -224,6 +237,10 @@ def build_uncertainty_gate(num_encoder_features, num_classes, gate_type="entropy
         return RelativeDistanceUncertaintyGate(num_encoder_features, num_classes)
     elif gate_type == "relative_softmax_distance":
         return RelativeSoftmaxDistanceUncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "learned":
+        return LearnedUncertaintyGate(num_encoder_features, num_classes)
+    elif gate_type == "learned_metric":
+        return LearnedMetricUncertaintyGate(num_encoder_features, num_classes)
     else:
         raise ValueError("Unsupported uncertainty gate type {}.".format(gate_type))
 
@@ -250,7 +267,7 @@ class UncertaintyGate(nn.Module):
 
     @staticmethod
     def compute_uncertainty(predictions):
-        return -1 * torch.sum(F.softmax(predictions, dim=1) * F.log_softmax(predictions, dim=1), dim=1) # entropy as metric for uncertainty
+        return -1 * torch.sum(F.softmax(predictions, dim=1) * F.log_softmax(predictions, dim=1), dim=1, keepdim=True) # entropy as metric for uncertainty
 
     @torch.no_grad()
     def initialize_weights(self):
@@ -258,13 +275,12 @@ class UncertaintyGate(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-
 class AbsoluteDistanceUncertaintyGate(UncertaintyGate):
 
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(predictions, 2, dim=1)
-        uncertainty =  top2[:,0] - top2[:,1] # distance between largest and 2nd largest value
+        uncertainty =  (top2[:,0] - top2[:,1]).unsqueeze(dim=1) # distance between largest and 2nd largest value
         
         return uncertainty
 
@@ -273,7 +289,7 @@ class AbsoluteSoftmaxDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
-        uncertainty =  top2[:,0] - top2[:,1] # distance between largest and 2nd largest value
+        uncertainty =  (top2[:,0] - top2[:,1]).unsqueeze(dim=1) # distance between largest and 2nd largest value
         
         return uncertainty
     
@@ -282,7 +298,7 @@ class RelativeDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(predictions, 2, dim=1)
-        uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
+        uncertainty =  (torch.true_divide(top2[:,0] - top2[:,1], top2[:,1])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
         
         return uncertainty
 
@@ -291,6 +307,101 @@ class RelativeSoftmaxDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
-        uncertainty =  torch.true_divide(top2[:,0] - top2[:,1], top2[:,1]) # relative distance between largest and 2nd largest value
+        uncertainty =  (torch.true_divide(top2[:,0] - top2[:,1], top2[:,1])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
         
         return uncertainty
+
+class LearnedUncertaintyGate(UncertaintyGate):
+
+    def __init__(self, num_features, num_classes):
+        super(LearnedUncertaintyGate, self).__init__(num_features, num_classes)
+        self.uncertainty_estimator = nn.Sequential(nn.Linear(num_features, num_features // 2),
+                                                   nn.ReLU(),
+                                                   nn.Linear(num_features // 2, 1),
+                                                   nn.Sigmoid())
+        self.initialize_weights()
+
+    def forward(self, input_features):        
+        # TODO: could add a few layers here
+        
+        # flatten featuremap out
+        input_features = F.relu(input_features)
+        input_features = F.adaptive_avg_pool2d(input_features, (1, 1))
+        input_features = torch.flatten(input_features, 1) # output dimension: (Batchsize, NUM_ENCODER_FEATURES)
+        
+        predictions = self.target_classifier(input_features) # predictions dimension: (Batchsize, NUM_CLASSES)
+        uncertainty = self.uncertainty_estimator(input_features)
+        
+        return predictions, uncertainty
+
+class LearnedMetricUncertaintyGate(UncertaintyGate):
+
+    def __init__(self, num_features, num_classes):
+        super(LearnedMetricUncertaintyGate, self).__init__(num_features, num_classes)
+        self.uncertainty_estimator = nn.Sequential(nn.Linear(num_classes, num_classes // 2),
+                                                   nn.ReLU(),
+                                                   nn.Linear(num_classes // 2, 1),
+                                                   nn.Sigmoid())
+        self.initialize_weights()
+
+    def compute_uncertainty(self, predictions):
+        return self.uncertainty_estimator(predictions)
+
+
+class TransformerDecoderLayerWithMap(torch.nn.TransformerDecoderLayer):
+    """
+    Provides the same functionality as torch.nn.TransformerDecoderLayer but returns the attention map in addition.
+    """
+
+    def forward(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None):
+        """
+        Pass the inputs (and mask) through the decoder layer.
+
+        Args:
+            tgt: the sequence to the decoder layer (required).
+            memory: the sequence from the last layer of the encoder (required).
+            tgt_mask: the mask for the tgt sequence (optional).
+            memory_mask: the mask for the memory sequence (optional).
+            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
+            memory_key_padding_mask: the mask for the memory keys per batch (optional).
+        """
+        tgt2 = self.self_attn(tgt, tgt, tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask)[0]
+        tgt = tgt + self.dropout1(tgt2)
+        tgt = self.norm1(tgt)
+        tgt2, attention_map = self.multihead_attn(tgt, memory, memory, attn_mask=memory_mask, key_padding_mask=memory_key_padding_mask)
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout3(tgt2)
+        tgt = self.norm3(tgt)
+        return tgt, attention_map
+
+
+class TransformerDecoderWithMap(torch.nn.TransformerDecoder):
+    """
+    Provides the same functionality as torch.nn.TransformerDecoderLayer but returns the attention maps in addition.
+    """
+
+    def forward(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None):
+        """
+        Pass the inputs (and mask) through the decoder layer in turn.
+
+        Args:
+            tgt: the sequence to the decoder (required).
+            memory: the sequence from the last layer of the encoder (required).
+            tgt_mask: the mask for the tgt sequence (optional).
+            memory_mask: the mask for the memory sequence (optional).
+            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
+            memory_key_padding_mask: the mask for the memory keys per batch (optional).
+        """
+        output = tgt
+        attention_maps = []
+
+        for mod in self.layers:
+            output, attention_map = mod(output, memory, tgt_mask=tgt_mask, memory_mask=memory_mask, tgt_key_padding_mask=tgt_key_padding_mask, memory_key_padding_mask=memory_key_padding_mask)
+            attention_maps.append(attention_map)
+
+        if self.norm is not None:
+            output = self.norm(output)
+
+        return output, torch.stack(attention_maps).permute(1,0,2,3) # attention map shape: (batchsize, num_decoder_layers, num_target_tokens, num_context_tokens)
