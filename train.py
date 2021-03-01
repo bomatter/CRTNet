@@ -21,7 +21,7 @@ from core.metrics import AccuracyLogger
 
 ## Initialization
 #
-
+    
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", type=str, help="Path to config file. If additional commandline options are provided, they are used to modify the specifications in the config file.")
 parser.add_argument("--outdir", type=str, default="output/{date:%Y-%m-%d_%H%M}".format(date=datetime.datetime.now()), help="Path to output folder (will be created if it does not exist).")
