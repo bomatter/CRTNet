@@ -5,7 +5,7 @@ import subprocess
 from ml_collections import ConfigDict
 
 
-def create_config(args):
+def create_config(args, num_classes=None):
     """
     Returns a ConfigDict. If args.config_file is not specified, default values are used. Further fileds in args are used instead of defaults.
 
@@ -16,7 +16,7 @@ def create_config(args):
     # Load or create new config
     if args.config is not None:
         with open(args.config) as f:
-            cfg = ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
+            cfg = ConfigDict(yaml.load(f, Loader=yaml.Loader))
     else:
         cfg = ConfigDict()
 
@@ -44,15 +44,8 @@ def create_config(args):
     elif not hasattr(cfg, "test_imagedir"):
         cfg.test_imagedir = None
 
-    if args.batch_size is not None:
-        cfg.batch_size = args.batch_size
-    elif not hasattr(cfg, "batch_size"):
-        cfg.batch_size = 16
-
-    if args.learning_rate is not None:
-        cfg.learning_rate = args.learning_rate
-    elif not hasattr(cfg, "learning_rate"):
-        cfg.learning_rate = 1e-5
+    if num_classes is not None:
+        cfg.num_classes = num_classes
 
     if args.num_decoder_layers is not None:
         cfg.num_decoder_layers = args.num_decoder_layers
@@ -63,6 +56,36 @@ def create_config(args):
         cfg.num_decoder_heads = args.num_decoder_heads
     elif not hasattr(cfg, "num_decoder_heads"):
         cfg.num_decoder_heads = 8
+
+    if args.uncertainty_gate_type is not None:
+        cfg.uncertainty_gate_type = args.uncertainty_gate_type
+    elif not hasattr(cfg, "uncertainty_gate_type"):
+        cfg.uncertainty_gate_type = "entropy"
+
+    if args.uncertainty_threshold is not None:
+        cfg.uncertainty_threshold = args.uncertainty_threshold
+    elif not hasattr(cfg, "uncertainty_threshold"):
+        cfg.uncertainty_threshold = 0.
+
+    if args.weighted_prediction is not None:
+        cfg.weighted_prediction = args.weighted_prediction
+    elif not hasattr(cfg, "weighted_prediction"):
+        cfg.weighted_prediction = False
+
+    if args.batch_size is not None:
+        cfg.batch_size = args.batch_size
+    elif not hasattr(cfg, "batch_size"):
+        cfg.batch_size = 16
+
+    if args.learning_rate is not None:
+        cfg.learning_rate = args.learning_rate
+    elif not hasattr(cfg, "learning_rate"):
+        cfg.learning_rate = 1e-5
+
+    if args.imbalance_reweighting is not None:
+        cfg.imbalance_reweighting = args.imbalance_reweighting
+    elif not hasattr(cfg, "imbalance_reweighting"):
+        cfg.imbalance_reweighting = False
 
     # add hash of last git commit to config if available
     try:
