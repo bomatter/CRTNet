@@ -214,7 +214,6 @@ class PositionalEncoding(nn.Module):
             bbox: Tensor of dim (batch_size, 4) where a row corresponds to relative coordinates
                   in the form [xmin, ymin, w, h] (e.g., [0.1, 0.3, 0.2, 0.2]).
         """
-        
         token_ids = ((torch.ceil((bbox[:,0] + bbox[:,2]/2) * self.tokens_per_dim) - 1) + (torch.ceil((bbox[:,1] + bbox[:,3]/2) * self.tokens_per_dim) - 1) * self.tokens_per_dim).long()
 
         return token_ids
@@ -350,7 +349,7 @@ class LearnedMetricUncertaintyGate(UncertaintyGate):
 
 class TransformerDecoderLayerWithMap(torch.nn.TransformerDecoderLayer):
     """
-    Provides the same functionality as torch.nn.TransformerDecoderLayer but returns the attention map in addition.
+    Adapted version of torch.nn.TransformerDecoderLayer without the self-attention stage. In addition, the attention map is returned.
     """
 
     def forward(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None):
@@ -365,9 +364,6 @@ class TransformerDecoderLayerWithMap(torch.nn.TransformerDecoderLayer):
             tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
             memory_key_padding_mask: the mask for the memory keys per batch (optional).
         """
-        tgt2 = self.self_attn(tgt, tgt, tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask)[0]
-        tgt = tgt + self.dropout1(tgt2)
-        tgt = self.norm1(tgt)
         tgt2, attention_map = self.multihead_attn(tgt, memory, memory, attn_mask=memory_mask, key_padding_mask=memory_key_padding_mask)
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
@@ -379,7 +375,7 @@ class TransformerDecoderLayerWithMap(torch.nn.TransformerDecoderLayer):
 
 class TransformerDecoderWithMap(torch.nn.TransformerDecoder):
     """
-    Provides the same functionality as torch.nn.TransformerDecoderLayer but returns the attention maps in addition.
+    Provides the same functionality as torch.nn.TransformerDecoder but returns the attention maps in addition.
     """
 
     def forward(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None, memory_key_padding_mask=None):
