@@ -27,7 +27,7 @@ class Model(nn.Module):
         self.NUM_CLASSES = num_classes
 
         self.context_encoder = Encoder()
-        self.target_encoder = Encoder()
+        self.target_encoder = self.context_encoder
 
         self.CONTEXT_IMAGE_SIZE = self.context_encoder.IMAGE_SIZE
         self.TARGET_IMAGE_SIZE = self.target_encoder.IMAGE_SIZE
