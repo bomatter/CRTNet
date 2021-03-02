@@ -3,6 +3,8 @@ import json
 import torch
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use("Agg") # deactivate interactive graphical output
 import matplotlib.pyplot as plt
 
 class AccuracyLogger():
