@@ -60,12 +60,12 @@ def create_config(args, num_classes=None):
     if args.uncertainty_gate_type is not None:
         cfg.uncertainty_gate_type = args.uncertainty_gate_type
     elif not hasattr(cfg, "uncertainty_gate_type"):
-        cfg.uncertainty_gate_type = "entropy"
+        cfg.uncertainty_gate_type = "learned"
 
     if args.uncertainty_threshold is not None:
         cfg.uncertainty_threshold = args.uncertainty_threshold
     elif not hasattr(cfg, "uncertainty_threshold"):
-        cfg.uncertainty_threshold = 0.
+        cfg.uncertainty_threshold = 0.8
 
     if args.weighted_prediction is not None:
         cfg.weighted_prediction = args.weighted_prediction
