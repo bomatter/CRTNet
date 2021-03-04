@@ -88,7 +88,7 @@ class Model(nn.Module):
             target_encoding = self.target_encoder(target_images)
             
             # Uncertainty gating for target
-            uncertainty_gate_prediction, uncertainty = self.uncertainty_gate(target_encoding.detach()) # Predictions and associated confidence metrics. Detach because encoder is trained via main branch only.
+            uncertainty_gate_prediction, uncertainty = self.uncertainty_gate(target_encoding) # Predictions and associated confidence metrics. Detach because encoder is trained via main branch only.
             
             # During inference, return uncertainty_gate_prediction if uncertainty is below the specified uncertainty threshold.
             # Note: The current implementation makes the gating decision on a per-batch basis. We expect/recommend that a batch size of 1 is used for inference.
