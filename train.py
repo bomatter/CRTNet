@@ -115,10 +115,14 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         bbox = bbox.to(device)
         labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
-        output_uncertainty_branch , output_main_branch, uncertainty = model(context_images, target_images, bbox)
+        output_uncertainty_branch , output_main_branch, output_weighted, uncertainty = model(context_images, target_images, bbox)
 
         # backpropagation through both branches
         optimizer.zero_grad(set_to_none=True)
+
+        if cfg.uncertainty_gate_type == "leanred" or cfg.uncertainty_gate_type == "leanred_metric":
+            loss_uncertainty_estimator = criterion(output_weighted, labels)
+            loss_uncertainty_estimator.backward(retain_graph=True)    
 
         loss_uncertainty_branch = criterion(output_uncertainty_branch, labels)
         loss_uncertainty_branch.backward(retain_graph=True)

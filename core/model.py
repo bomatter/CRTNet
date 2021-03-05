@@ -110,17 +110,14 @@ class Model(nn.Module):
 
         # Classification
         main_prediction = self.classifier(target_encoding.squeeze(0))
-        weighted_prediction = uncertainty * main_prediction.detach() + (1-uncertainty) * uncertainty_gate_prediction # detached from main branch
+        weighted_prediction = uncertainty * main_prediction.detach() + (1-uncertainty) * uncertainty_gate_prediction.detach() # detached from main branch and uncertainty gate classifier
 
         if self.weighted_prediction:
             main_prediction = uncertainty.detach() * main_prediction + (1-uncertainty.detach()) * uncertainty_gate_prediction.detach() # detached from uncertainty branch
 
         # Return accoring to model state
         if self.training:
-            if self.UNCERTAINTY_GATE_TYPE == "learned" or self.UNCERTAINTY_GATE_TYPE == "learned_metric" or self.weighted_prediction: # require weighted predictions for training
-                return weighted_prediction, main_prediction, uncertainty
-            else:
-                return uncertainty_gate_prediction, main_prediction, uncertainty
+            return uncertainty_gate_prediction, main_prediction, weighted_prediction, uncertainty
         elif self.extended_output:
             return uncertainty_gate_prediction, main_prediction, uncertainty, attention_map
         else:
