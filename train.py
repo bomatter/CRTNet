@@ -120,7 +120,7 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         # backpropagation through both branches
         optimizer.zero_grad(set_to_none=True)
 
-        if cfg.uncertainty_gate_type == "leanred" or cfg.uncertainty_gate_type == "leanred_metric":
+        if cfg.uncertainty_gate_type == "learned" or cfg.uncertainty_gate_type == "learned_metric":
             loss_uncertainty_estimator = criterion(output_weighted, labels)
             loss_uncertainty_estimator.backward(retain_graph=True)    
 
