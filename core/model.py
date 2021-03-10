@@ -15,7 +15,7 @@ class Model(nn.Module):
             num_classes (int): Number of classes.
             num_decoder_layers (int, optional): Defaults to 6.
             num_decoder_heads (int, optional): Defaults to 8.
-            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "absolute_distance", "absolute_softmax_distance", "relative_distance", "relative_softmax_distance", "learned", "learned_metric".
+            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "relative_distance", "relative_softmax_distance", "learned", "learned_metric".
             uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
             weighted_prediction (bool, optional): If enabled, the model returns an uncertainty-weighted prediction if the uncertainty_gate prediction exceeds the uncertainty threshold.
             extended_output (bool, optional): Can be enabled to return predictions from both branches, uncertainty value and attention maps when the model is in eval mode.
@@ -270,31 +270,13 @@ class UncertaintyGate(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-
-class AbsoluteDistanceUncertaintyGate(UncertaintyGate):
-
-    @staticmethod
-    def compute_uncertainty(predictions):
-        top2, _ = torch.topk(predictions, 2, dim=1)
-        uncertainty =  (top2[:,0] - top2[:,1]).unsqueeze(dim=1) # distance between largest and 2nd largest value
-        
-        return uncertainty
-
-class AbsoluteSoftmaxDistanceUncertaintyGate(UncertaintyGate):
-    
-    @staticmethod
-    def compute_uncertainty(predictions):
-        top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
-        uncertainty =  (top2[:,0] - top2[:,1]).unsqueeze(dim=1) # distance between largest and 2nd largest value
-        
-        return uncertainty
     
 class RelativeDistanceUncertaintyGate(UncertaintyGate):
     
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(predictions, 2, dim=1)
-        uncertainty =  (torch.true_divide(top2[:,0] - top2[:,1], top2[:,1])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
+        uncertainty =  1 - (torch.true_divide(top2[:,0] - top2[:,1], top2[:,0])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
         
         return uncertainty
 
@@ -303,7 +285,7 @@ class RelativeSoftmaxDistanceUncertaintyGate(UncertaintyGate):
     @staticmethod
     def compute_uncertainty(predictions):
         top2, _ = torch.topk(F.softmax(predictions, dim=1), 2, dim=1)
-        uncertainty =  (torch.true_divide(top2[:,0] - top2[:,1], top2[:,1])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
+        uncertainty =  1 - (torch.true_divide(top2[:,0] - top2[:,1], top2[:,0])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
         
         return uncertainty
 
