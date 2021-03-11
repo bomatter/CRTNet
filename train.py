@@ -42,7 +42,7 @@ parser.add_argument("--learning_rate", type=float, help="Learning rate to use fo
 parser.add_argument("--imbalance_reweighting", action='store_true', help="Reweight samples in proportion to the number of samples per class.")
 parser.add_argument("--num_decoder_heads", type=int, help="Number of decoder heads.")
 parser.add_argument("--num_decoder_layers", type=int, help="Number of decoder layers.")
-parser.add_argument("--uncertainty_gate_type", type=str, help="Uncertainty gating mechanism to use. Can be one of: 'entropy', 'absolute_distance', 'absolute_softmax_distance', 'relative_distance', 'relative_softmax_distance', 'learned', 'learned_metric'.")
+parser.add_argument("--uncertainty_gate_type", type=str, help="Uncertainty gating mechanism to use. Can be one of: 'entropy', 'relative_distance', 'relative_softmax_distance', 'learned', 'learned_metric'.")
 parser.add_argument("--uncertainty_threshold", type=float, help="Uncertainty threshold for the uncertainty gating module. Note that training does not depend on the threshold, the model can still be used with different thresholds later.")
 parser.add_argument("--weighted_prediction", action='store_true', default=None, help="If enabled, the model returns an uncertainty-weighted prediction if the uncertainty_gate prediction exceeds the uncertainty threshold.")
 args = parser.parse_args()
@@ -115,10 +115,14 @@ for epoch in tqdm(range(start_epoch, args.epochs + 1), position=0, desc="Epochs"
         bbox = bbox.to(device)
         labels = labels_cpu.to(device) # keep a copy of labels on cpu to avoid unnecessary transfer back to cpu later
 
-        output_uncertainty_branch , output_main_branch, uncertainty = model(context_images, target_images, bbox)
+        output_uncertainty_branch , output_main_branch, output_weighted, uncertainty = model(context_images, target_images, bbox)
 
         # backpropagation through both branches
         optimizer.zero_grad(set_to_none=True)
+
+        if cfg.uncertainty_gate_type == "learned" or cfg.uncertainty_gate_type == "learned_metric":
+            loss_uncertainty_estimator = criterion(output_weighted, labels)
+            loss_uncertainty_estimator.backward(retain_graph=True)    
 
         loss_uncertainty_branch = criterion(output_uncertainty_branch, labels)
         loss_uncertainty_branch.backward(retain_graph=True)

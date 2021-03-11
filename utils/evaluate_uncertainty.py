@@ -89,6 +89,7 @@ if __name__ == "__main__":
     parser.add_argument("--annotations", type=str, help="Path to COCO-style annotations file.")
     parser.add_argument("--imagedir", type=str, help="Path to images folder w.r.t. which filenames are specified in the annotations.")
     
+    parser.add_argument("--uncertainty_gate_type", type=str, help="Uncertainty gate type to use.")
     parser.add_argument("--weighted_prediction", action='store_true', dest='weighted_prediction', help="If set, the model outputs a weighted prediction if the uncertainty gate prediction exceeds the uncertainty threshold.")
     parser.add_argument("--unweighted_prediction", action='store_false', dest='weighted_prediction', help="If set, the model outputs unweighted predictions.")    
     parser.set_defaults(weighted_prediction=None)
@@ -108,6 +109,8 @@ if __name__ == "__main__":
         cfg.test_annotations = args.annotations
     if args.imagedir is not None:
         cfg.test_imagedir = args.imagedir
+    if args.uncertainty_gate_type is not None:
+        cfg.uncertainty_gate_type = args.uncertainty_gate_type
     if args.weighted_prediction is not None:
         cfg.weighted_prediction = args.weighted_prediction
 
@@ -126,7 +129,13 @@ if __name__ == "__main__":
     print("Initializing model from checkpoint {}".format(args.checkpoint))
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     model = Model.from_config(cfg, extended_output=True)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+
+    assert not missing_keys, "Checkpoint is missing keys required to initialize the model: {}".format(missing_keys)
+    if len(unexpected_keys):
+        print("Checkpoint contains unexpected keys that were not used to initialize the model: ")
+        print(unexpected_keys)
+
     model.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
 
     evaluate_uncertainty(model, cfg.test_annotations, cfg.test_imagedir, args.outdir, outname=args.outname, save_plot=args.save_plot)
