@@ -15,7 +15,7 @@ class Model(nn.Module):
             num_classes (int): Number of classes.
             num_decoder_layers (int, optional): Defaults to 6.
             num_decoder_heads (int, optional): Defaults to 8.
-            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "relative_distance", "relative_softmax_distance", "learned", "learned_metric".
+            uncertainty_gate_type (str, optional): Uncertainty gating mechanism to use. Can be one of: "entropy", "relative_softmax_distance", "learned", "learned_metric".
             uncertainty_threshold (int, optional): Used for the uncertainty gating mechanism. If the prediction uncertainty exceeds the uncertainty_threshold, context information is incorporated. Defaults to 0.
             weighted_prediction (bool, optional): If enabled, the model returns an uncertainty-weighted prediction if the uncertainty_gate prediction exceeds the uncertainty threshold.
             extended_output (bool, optional): Can be enabled to return predictions from both branches, uncertainty value and attention maps when the model is in eval mode.
@@ -225,12 +225,6 @@ class PositionalEncoding(nn.Module):
 def build_uncertainty_gate(num_encoder_features, num_classes, gate_type="entropy"):
     if gate_type == "entropy":
         return UncertaintyGate(num_encoder_features, num_classes)
-    elif gate_type == "absolute_distance":
-        return AbsoluteDistanceUncertaintyGate(num_encoder_features, num_classes)
-    elif gate_type == "absolute_softmax_distance":
-        return AbsoluteSoftmaxDistanceUncertaintyGate(num_encoder_features, num_classes)
-    elif gate_type == "relative_distance":
-        return RelativeDistanceUncertaintyGate(num_encoder_features, num_classes)
     elif gate_type == "relative_softmax_distance":
         return RelativeSoftmaxDistanceUncertaintyGate(num_encoder_features, num_classes)
     elif gate_type == "learned":
@@ -270,15 +264,6 @@ class UncertaintyGate(nn.Module):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-    
-class RelativeDistanceUncertaintyGate(UncertaintyGate):
-    
-    @staticmethod
-    def compute_uncertainty(predictions):
-        top2, _ = torch.topk(predictions, 2, dim=1)
-        uncertainty =  1 - (torch.true_divide(top2[:,0] - top2[:,1], top2[:,0])).unsqueeze(dim=1) # relative distance between largest and 2nd largest value
-        
-        return uncertainty
 
 class RelativeSoftmaxDistanceUncertaintyGate(UncertaintyGate):
     
