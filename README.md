@@ -77,6 +77,10 @@ python test.py --checkpoint output/checkpoint_1.tar --config output/config.yaml
 
 ## Citation
 
-> TODO
+[When Pigs Fly: Contextual Reasoning in Synthetic and Natural Scenes](https://arxiv.org/abs/2104.02215)
+
+Authors: Philipp Bomatter*, Mengmi Zhang*, Dimitar Karev, Spandan Madan, Claire Tseng, Gabriel Kreiman
+(* equal contribution)
+
 
 The images for the sample dataset in the `debug` folder were generated with VirtualHome (see http://virtual-home.org/).
